@@ -16,8 +16,10 @@
  */
 package org.hawkular.alerts.engine;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -1107,6 +1109,53 @@ public class RulesEngineTest {
     }
 
     @Test
+    public void DampeningStrictTimeoutTest() {
+        Trigger t1 = new Trigger("trigger-1", "Avail-DOWN");
+        AvailabilityCondition t1c1 = new AvailabilityCondition("trigger-1", 1, 1,
+                "AvailData-01", AvailabilityCondition.Operator.DOWN);
+
+        Dampening t1d = Dampening.forStrictTimeout("trigger-1", Mode.FIRE, 1000L);
+
+        t1.setEnabled(true);
+
+        rulesEngine.addFact(t1);
+        rulesEngine.addFact(t1c1);
+        rulesEngine.addFact(t1d);
+
+        long start = System.currentTimeMillis();
+
+        rulesEngine.addData(new Availability("AvailData-01", 1, AvailabilityType.DOWN));
+        while ((alerts.size() == 0) && ((System.currentTimeMillis() - start) < 2000)) {
+            System.out.println("Firing... " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date()));
+            rulesEngine.fire();
+            try {
+                Thread.sleep(100L);
+            } catch (InterruptedException e) {
+            }
+        }
+
+        assert alerts.size() == 1 : alerts;
+
+        Alert a = alerts.get(0);
+        assert (alerts.get(0).getTime() - start) >= 80 : (alerts.get(0).getTime() - start);
+        assert (alerts.get(0).getTime() - start) <= 120 : (alerts.get(0).getTime() - start);
+        assert a.getTriggerId().equals("trigger-1") : a.getTriggerId();
+        assert a.getEvalSets().size() == 1 : a.getEvalSets().size();
+        for (Set<ConditionEval> evalSet : a.getEvalSets()) {
+            assert evalSet.size() == 1 : evalSet;
+            AvailabilityConditionEval e = (AvailabilityConditionEval) evalSet.iterator().next();
+            assert e.getConditionSetIndex() == 1 : e;
+            assert e.getConditionSetSize() == 1 : e;
+            assert e.getTriggerId().equals("trigger-1");
+            assert e.isMatch();
+            AvailabilityType v = e.getValue();
+            assert v == AvailabilityType.DOWN : e;
+            assert e.getCondition().getDataId().equals("AvailData-01") : e
+                    .getCondition();
+        }
+    }
+
+    @Test
     public void multiConditionTest() {
         Trigger t1 = new Trigger("trigger-1", "Two-Conditions");
         ThresholdCondition t1c1 = new ThresholdCondition("trigger-1", 2, 1, "NumericData-01",
@@ -1199,7 +1248,6 @@ public class RulesEngineTest {
         AvailabilityCondition smt1c1 = new AvailabilityCondition("trigger-1", Mode.SAFETY, 1, 1,
                 "AvailData-01", AvailabilityCondition.Operator.UP);
         Dampening smt1d = Dampening.forStrict("trigger-1", Mode.SAFETY, 2);
-
 
         datums.add(new Availability("AvailData-01", 1, AvailabilityType.DOWN));
         datums.add(new Availability("AvailData-01", 2, AvailabilityType.UNAVAILABLE));

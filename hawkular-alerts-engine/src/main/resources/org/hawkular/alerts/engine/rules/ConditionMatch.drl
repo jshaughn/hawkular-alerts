@@ -29,6 +29,7 @@ import org.hawkular.alerts.api.model.condition.ThresholdConditionEval;
 import org.hawkular.alerts.api.model.condition.ThresholdRangeCondition;
 import org.hawkular.alerts.api.model.condition.ThresholdRangeConditionEval;
 import org.hawkular.alerts.api.model.dampening.Dampening;
+import org.hawkular.alerts.api.model.dampening.Timeout;
 import org.hawkular.alerts.api.model.data.Availability;
 import org.hawkular.alerts.api.model.data.Availability.AvailabilityType
 import org.hawkular.alerts.api.model.data.NumericData;
@@ -43,6 +44,11 @@ import org.jboss.logging.Logger;
 
 import java.util.HashSet;
 import java.util.List;
+
+declare Timeout
+    @role( event )
+//    @timestamp( eventTime )
+end
 
 global Logger log;
 global NotificationsService notifications;
@@ -251,6 +257,48 @@ rule ProvideDefaultDampening
         Dampening d = new Dampening( $tid, $tmode, Dampening.Type.STRICT, 1, 1, 0L );
         insert( d );
 end
+
+rule DampeningTimeoutStart
+    when
+        $t : Trigger( $tid : id, mode == $tmode : mode )
+        Dampening( triggerId == $tid, triggerMode == $tmode, satisfied == false,
+                   type == Type.STRICT_TIMEOUT, numTrueEvals == 1,  $ets : evalTimeSetting )
+        not Timeout( triggerId == $tid )
+    then
+        Timeout to = new Timeout( $tid, $ets );
+        if (log != null && log.isDebugEnabled()) {
+            log.debug("Setting Timeout! (" + $ets + "ms)" + to );
+        }
+        insert( to );
+end
+
+rule DampeningTimeoutCancel
+    when
+        $t : Trigger( $tid : id, mode == $tmode : mode )
+        Dampening( triggerId == $tid, triggerMode == $tmode, type == Type.STRICT_TIMEOUT, numTrueEvals == 0 )
+        $to : Timeout( triggerId == $tid, canceled == false )
+    then
+        if (log != null && log.isDebugEnabled()) {
+            log.debug("Canceling Timeout! " + $to);
+        }
+        retract( $to );
+end
+
+rule DampenOnTimeout
+    when
+        $t  : Trigger( $tid : id, mode == $tmode : mode )
+        $d  : Dampening( triggerId == $tid, triggerMode == $tmode, type == Type.STRICT_TIMEOUT, numTrueEvals > 0, $ets : evalTimeSetting)
+        $to : Timeout( triggerId == $tid, canceled == false, $time : time )
+        not( Timeout( this != $to,  this after[0s,1s] $to ) )
+    then
+        if (log != null && log.isDebugEnabled()) {
+            log.debug("Dampening Timeout, Trigger Satisfied! " + $to);
+        }
+        $d.setSatisfied(true);
+        update( $d );
+        retract( $to )
+end
+
 
 rule DampenTriggerAny
     when

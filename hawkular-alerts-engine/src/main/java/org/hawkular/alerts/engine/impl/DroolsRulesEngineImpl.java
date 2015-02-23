@@ -24,7 +24,9 @@ import javax.ejb.Singleton;
 import org.hawkular.alerts.api.model.data.Data;
 import org.hawkular.alerts.engine.log.MsgLogger;
 import org.hawkular.alerts.engine.rules.RulesEngine;
+import org.kie.api.KieBaseConfiguration;
 import org.kie.api.KieServices;
+import org.kie.api.conf.EventProcessingOption;
 import org.kie.api.runtime.KieContainer;
 import org.kie.api.runtime.KieSession;
 import org.kie.api.runtime.rule.FactHandle;
@@ -55,6 +57,9 @@ public class DroolsRulesEngineImpl implements RulesEngine {
         log.debugf("Creating instance.");
         ks = KieServices.Factory.get();
         kc = ks.getKieClasspathContainer();
+        KieBaseConfiguration config = KieServices.Factory.get().newKieBaseConfiguration();
+        config.setOption(EventProcessingOption.STREAM);
+        kc.newKieBase("hawkular-alerts-engine", config);
         kSession = kc.newKieSession(SESSION_NAME);
     }
 
@@ -137,7 +142,8 @@ public class DroolsRulesEngineImpl implements RulesEngine {
 
             batchData.clear();
 
-            kSession.fireAllRules();
+            //kSession.fireAllRules();
+            kSession.fireUntilHalt();
         }
     }
 
