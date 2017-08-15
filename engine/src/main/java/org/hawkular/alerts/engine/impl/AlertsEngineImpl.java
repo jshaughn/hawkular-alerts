@@ -35,12 +35,12 @@ import java.util.concurrent.ExecutorService;
 import org.hawkular.alerts.api.model.condition.CompareCondition;
 import org.hawkular.alerts.api.model.condition.Condition;
 import org.hawkular.alerts.api.model.condition.ConditionEval;
-import org.hawkular.alerts.api.model.condition.MissingCondition;
 import org.hawkular.alerts.api.model.condition.MissingConditionEval;
 import org.hawkular.alerts.api.model.dampening.Dampening;
 import org.hawkular.alerts.api.model.data.Data;
 import org.hawkular.alerts.api.model.event.Alert;
 import org.hawkular.alerts.api.model.event.Event;
+import org.hawkular.alerts.api.model.trigger.Mode;
 import org.hawkular.alerts.api.model.trigger.Trigger;
 import org.hawkular.alerts.api.services.ActionsService;
 import org.hawkular.alerts.api.services.AlertsService;
@@ -56,6 +56,8 @@ import org.hawkular.alerts.engine.service.PartitionManager.Operation;
 import org.hawkular.alerts.engine.service.PartitionTriggerListener;
 import org.hawkular.alerts.engine.service.RulesEngine;
 import org.hawkular.alerts.engine.util.MissingState;
+import org.hawkular.alerts.engine.util.SourceDampening;
+import org.hawkular.alerts.engine.util.SourceTrigger;
 import org.hawkular.alerts.log.AlertingLogger;
 import org.hawkular.commons.log.MsgLogging;
 import org.hawkular.commons.properties.HawkularProperties;
@@ -92,10 +94,10 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
 
     private final List<Alert> alerts;
     private final List<Event> events;
-    private final Set<Dampening> pendingTimeouts;
-    private final Map<Trigger, List<Set<ConditionEval>>> autoResolvedTriggers;
-    private final Set<Trigger> disabledTriggers;
+    private final Set<SourceDampening> pendingTimeouts;
     private final Set<MissingState> missingStates;
+    private final Map<SourceTrigger, List<Set<ConditionEval>>> autoResolvedSourceTriggers;
+    private final Set<SourceTrigger> disabledSourceTriggers;
 
     private final Timer wakeUpTimer;
     private TimerTask rulesTask;
@@ -133,16 +135,17 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
         alerts = new ArrayList<>();
         events = new ArrayList<>();
         pendingTimeouts = new HashSet<>();
-        autoResolvedTriggers = new HashMap<>();
-        disabledTriggers = new HashSet<>();
+        autoResolvedSourceTriggers = new HashMap<>();
         missingStates = new HashSet<>();
+        disabledSourceTriggers = new HashSet<>();
 
         wakeUpTimer = new Timer("AlertsEngineImpl-Timer");
 
         delay = new Integer(HawkularProperties.getProperty(ENGINE_DELAY, "1000"));
         period = new Integer(HawkularProperties.getProperty(ENGINE_PERIOD, "2000"));
-        engineExtensions = Boolean.parseBoolean(HawkularProperties.getProperty(ENGINE_EXTENSIONS, ENGINE_EXTENSIONS_ENV,
-                ENGINE_EXTENSIONS_DEFAULT));
+        engineExtensions = Boolean
+                .parseBoolean(HawkularProperties.getProperty(ENGINE_EXTENSIONS, ENGINE_EXTENSIONS_ENV,
+                        ENGINE_EXTENSIONS_DEFAULT));
     }
 
     public RulesEngine getRules() {
@@ -218,9 +221,9 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
         alerts.clear();
         events.clear();
         pendingTimeouts.clear();
-        autoResolvedTriggers.clear();
-        disabledTriggers.clear();
+        autoResolvedSourceTriggers.clear();
         missingStates.clear();
+        disabledSourceTriggers.clear();
 
         rulesTask = new RulesInvoker();
         wakeUpTimer.schedule(rulesTask, delay, period);
@@ -228,48 +231,57 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
 
     @Override
     public void reload() {
-        log.debug("Start a full reload of the AlertsEngine");
-        rules.reset();
-        if (distributed) {
-            alertsEngineCache.clear();
-        }
-        if (rulesTask != null) {
-            rulesTask.cancel();
-        }
-
-        Collection<Trigger> triggers = null;
         try {
-            triggers = definitions.getAllTriggers();
-        } catch (Exception e) {
-            log.debug(e.getMessage(), e);
-            log.errorDefinitionsService("Triggers", e.getMessage());
-        }
+            log.debug("Start a full reload of the AlertsEngine");
+            rules.reset();
+            if (distributed) {
+                alertsEngineCache.clear();
+            }
+            if (rulesTask != null) {
+                rulesTask.cancel();
+            }
+
+            Collection<Trigger> triggers = null;
+            try {
+                triggers = definitions.getAllTriggers();
+            } catch (Exception e) {
+                log.debug(e.getMessage(), e);
+                log.errorDefinitionsService("Triggers", e.getMessage());
+            }
 
         if (!isEmpty(triggers)) {
-
-            triggers.stream().filter(Trigger::isLoadable).forEach(t -> {
-                /*
+                triggers.stream().filter(Trigger::isLoadable).forEach(t -> {
+                    /*
                     In distributed scenario a reload should delegate into the PartitionManager to load the trigger on
                     the node which belongs
-                 */
-                if (distributed) {
-                    partitionManager.notifyTrigger(Operation.UPDATE, t.getTenantId(), t.getId());
-                } else {
-                    reloadTrigger(t);
-                }
-            });
+                     */
+                    if (distributed) {
+                        partitionManager.notifyTrigger(Operation.UPDATE, t.getTenantId(), t.getId());
+                    } else {
+                        reloadTrigger(t);
+                    }
+                });
+            }
+
+            rules.addGlobal("log", log);
+            rules.addGlobal("actions", actions);
+            rules.addGlobal("alerts", alerts);
+            rules.addGlobal("events", events);
+            rules.addGlobal("pendingTimeouts", pendingTimeouts);
+            rules.addGlobal("missingStates", missingStates);
+            rules.addGlobal("autoResolvedSourceTriggers", autoResolvedSourceTriggers);
+            rules.addGlobal("disabledSourceTriggers", disabledSourceTriggers);
+
+            rulesTask = new RulesInvoker();
+            wakeUpTimer.schedule(rulesTask, delay, period);
+
+        } catch (Throwable t) {
+            if (log.isDebugEnabled()) {
+                t.printStackTrace();
+            }
+            log.errorf("Failed to reload AlertsEngine: %s", t.getMessage());
+            throw t;
         }
-
-        rules.addGlobal("log", log);
-        rules.addGlobal("actions", actions);
-        rules.addGlobal("alerts", alerts);
-        rules.addGlobal("events", events);
-        rules.addGlobal("pendingTimeouts", pendingTimeouts);
-        rules.addGlobal("autoResolvedTriggers", autoResolvedTriggers);
-        rules.addGlobal("disabledTriggers", disabledTriggers);
-
-        rulesTask = new RulesInvoker();
-        wakeUpTimer.schedule(rulesTask, delay, period);
     }
 
     @Override
@@ -378,16 +390,16 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
                             alertsEngineCache.add(entry2);
                         }
                     }
-                    if (c instanceof MissingCondition) {
-                        // MissingState keeps a reference to the Trigger fact to check active trigger mode
-                        MissingState missingState = new MissingState(trigger, (MissingCondition) c);
-                        // MissingStates are modified inside the rules engine
-                        synchronized (missingStates) {
-                            missingStates.remove(missingState);
-                            missingStates.add(missingState);
-                            rules.addFact(missingState);
-                        }
-                    }
+                    //if (c instanceof MissingCondition) {
+                    //    // MissingState keeps a reference to the Trigger fact to check active trigger mode
+                    //    MissingState missingState = new MissingState(trigger, Data.SOURCE_NONE, (MissingCondition) c);
+                    //    // MissingStates are modified inside the rules engine
+                    //    synchronized (missingStates) {
+                    //        missingStates.remove(missingState);
+                    //        missingStates.add(missingState);
+                    //        rules.addFact(missingState);
+                    //    }
+                    //}
                 }
 
                 rules.addFact(trigger);
@@ -403,19 +415,53 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
     }
 
     @Override
-    public Trigger getLoadedTrigger(Trigger trigger) {
+    public boolean updateSourceTrigger(Trigger trigger, String source, Boolean enabled, Mode mode) {
         if (null == trigger) {
             throw new IllegalArgumentException("Trigger must be not null");
         }
+        if (null == source) {
+            throw new IllegalArgumentException("Source must be not null");
+        }
 
-        Trigger loadedTrigger = null;
+        boolean update = false;
+        SourceTrigger sourceTrigger = null;
         try {
-            loadedTrigger = (Trigger) rules.getFact(trigger);
+            sourceTrigger = (SourceTrigger) rules.getFact(new SourceTrigger(trigger, source));
+            if (enabled != null && enabled != sourceTrigger.isEnabled()) {
+                sourceTrigger.setEnabled(enabled);
+                update = true;
+            }
+            if (mode != null && mode != sourceTrigger.getMode()) {
+                sourceTrigger.setMode(mode);
+                update = true;
+            }
+            if (update) {
+                rules.updateFact(sourceTrigger);
+            }
+        } catch (Exception e) {
+            log.errorf("Failed to setSourceTrigger enabled %s, source=%s: %s", trigger, source, e);
+            update = false;
+        }
+        return update;
+    }
+
+    @Override
+    public SourceTrigger getSourceTrigger(Trigger trigger, String source) {
+        if (null == trigger) {
+            throw new IllegalArgumentException("Trigger must be not null");
+        }
+        if (null == source) {
+            throw new IllegalArgumentException("Source must be not null");
+        }
+
+        SourceTrigger sourceTrigger = null;
+        try {
+            sourceTrigger = (SourceTrigger) rules.getFact(new SourceTrigger(trigger, source));
 
         } catch (Exception e) {
-            log.errorf("Failed to get Trigger from engine %s: %s", trigger, e);
+            log.errorf("Failed to get SourceTrigger from engine %s, source=%s: %s", trigger, source, e);
         }
-        return loadedTrigger;
+        return sourceTrigger;
     }
 
     @Override
@@ -609,9 +655,7 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
         @Override
         public void run() {
             int numTimeouts = checkPendingTimeouts();
-
             int numMissingEvals = checkMissingStates();
-
             if (!pendingData.isEmpty() || !pendingEvents.isEmpty() || numTimeouts > 0 || numMissingEvals > 0) {
                 TreeSet<Data> newData = getAndClearPendingData();
                 TreeSet<Event> newEvents = getAndClearPendingEvents();
@@ -648,7 +692,6 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
                         partitionManager.notifyEvents(new ArrayList<>(events));
                     }
                     events.clear();
-                    handleDisabledTriggers();
                     handleAutoResolvedTriggers();
 
                 } catch (Exception e) {
@@ -668,9 +711,9 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
             }
 
             long now = System.currentTimeMillis();
-            Set<Dampening> timeouts = null;
-            for (Dampening d : pendingTimeouts) {
-                if (now < d.getTrueEvalsStartTime() + d.getEvalTimeSetting()) {
+            Set<SourceDampening> timeouts = null;
+            for (SourceDampening d : pendingTimeouts) {
+                if (now < d.getTrueEvalsStartTime() + d.getDampening().getEvalTimeSetting()) {
                     continue;
                 }
 
@@ -697,49 +740,23 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
         }
     }
 
-    private void handleDisabledTriggers() {
-        try {
-            for (Trigger t : disabledTriggers) {
-                try {
-                    definitions.updateTriggerEnablement(t.getTenantId(), t.getId(), false);
-
-                } catch (Exception e) {
-                    log.errorf(e, "Failed to persist updated trigger. Could not autoDisable %s.", t);
-                }
-            }
-        } finally {
-            disabledTriggers.clear();
-        }
-    }
-
     private void handleAutoResolvedTriggers() {
         try {
-            for (Entry<Trigger, List<Set<ConditionEval>>> entry : autoResolvedTriggers.entrySet()) {
-                Trigger t = entry.getKey();
-                boolean manualReload = !t.isAutoResolveAlerts();
+            for (Entry<SourceTrigger, List<Set<ConditionEval>>> entry : autoResolvedSourceTriggers.entrySet()) {
+                SourceTrigger rt = entry.getKey();
+                Trigger t = rt.getTrigger();
 
-                // calling resolveAlertsForTrigger will result in a trigger reload (unless it fails),
-                // otherwise, manually reload the trigger back into the engine (in firing mode).
                 if (t.isAutoResolveAlerts()) {
                     try {
-                        alertsService.resolveAlertsForTrigger(t.getTenantId(), t.getId(), "AutoResolve",
-                                "Trigger AutoResolve=True", entry.getValue());
+                        alertsService.resolveAlertsForTrigger(t.getTenantId(), t.getId(), rt.getSource(),
+                                "AutoResolve", "Trigger AutoResolve=True", entry.getValue());
                     } catch (Exception e) {
-                        manualReload = true;
-                        log.errorf("Failed to resolve Alerts. Could not AutoResolve alerts for trigger %s.", t);
-                    }
-                }
-
-                if (manualReload) {
-                    try {
-                        reloadTrigger(t.getTenantId(), t.getId());
-                    } catch (Exception e) {
-                        log.errorf("Failed to reload AutoResolved Trigger: %s.", t);
+                        log.errorf("Failed to AutoResolve alerts for trigger %s with source %s.", t, rt.getSource());
                     }
                 }
             }
         } finally {
-            autoResolvedTriggers.clear();
+            autoResolvedSourceTriggers.clear();
         }
     }
 
@@ -750,7 +767,7 @@ public class AlertsEngineImpl implements AlertsEngine, PartitionTriggerListener,
 
         int numMatchingEvals = 0;
         for (MissingState missingState : missingStates) {
-            if (missingState.getTriggerMode() != missingState.getTrigger().getMode()) {
+            if (missingState.getTriggerMode() != missingState.getSourceTrigger().getMode()) {
                 continue;
             }
 

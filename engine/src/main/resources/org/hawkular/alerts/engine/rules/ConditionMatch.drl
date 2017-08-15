@@ -54,6 +54,8 @@ import org.hawkular.alerts.engine.util.CompareData;
 import org.hawkular.alerts.engine.util.MissingState;
 import org.hawkular.alerts.engine.util.NelsonData;
 import org.hawkular.alerts.engine.util.RateData;
+import org.hawkular.alerts.engine.util.SourceDampening;
+import org.hawkular.alerts.engine.util.SourceTrigger;
 import org.hawkular.commons.log.MsgLogger;
 
 import java.util.ArrayList;
@@ -68,8 +70,66 @@ global ActionsService actions;
 global List alerts;
 global List events;
 global Set pendingTimeouts;
-global Map autoResolvedTriggers;
-global Set disabledTriggers;
+global Map autoResolvedSourceTriggers;
+global Set disabledSourceTriggers;
+global Set missingStates;
+
+////// SOURCE TRIGGER HANDLING
+//
+// Each Trigger can be the root of several SourceTrigger instances. Each SourceTrigger handles a different data
+// "source". We can then track dampening, mode and matchType individually for each SourceTrigger.  Not every
+// source may be valid for the trigger.  If valid create a SourceTrigger, otherwise retract the Data to stop
+// processing.
+
+rule AddSourceTriggerViaData
+    when
+        $t : Trigger( $tenantId : tenantId, $tid : id )
+        $c : Condition ( tenantId == $tenantId, triggerId == $tid, $did : dataId )
+        $d : Data( tenantId == $tenantId, id == $did, $source : source )
+        not  SourceTrigger( tenantId == $tenantId, id == $tid, source == $source )
+    then
+        if ( $t.isValidSource($source) ) {
+          SourceTrigger st = new SourceTrigger($t, $source);
+          if (log != null && log.isDebugEnabled()) {
+            log.debugf("Adding %s for %s", st, $d);
+          }
+          insert( st );
+        } else {
+          retract( $d );
+        }
+end
+
+rule AddSourceTriggerViaEvent
+    when
+        $t : Trigger( $tenantId : tenantId, $tid : id )
+        $c : Condition ( tenantId == $tenantId, triggerId == $tid, $did : dataId )
+        $e : Event( tenantId == $tenantId, dataId == $did, $source : dataSource )
+        not  SourceTrigger( tenantId == $tenantId, id == $tid, source == $source )
+    then
+        if ( $t.isValidSource($source) ) {
+          SourceTrigger st = new SourceTrigger($t, $source);
+          if (log != null && log.isDebugEnabled()) {
+            log.debugf("Adding %s for %s", st, $e);
+          }
+          insert( st );
+        } else {
+          retract( $e );
+        }
+end
+
+rule AddMissingState
+    when
+        $st : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $source : source )
+        $c  : MissingCondition( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode )
+        not   MissingState( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, source == $source )
+    then
+        MissingState ms = new MissingState($st, $c);
+        if (log != null && log.isDebugEnabled()) {
+          log.debugf("Adding %s", ms);
+        }
+        missingStates.add(ms);
+        insert( ms );
+end
 
 ////// CONDITION MATCHING
 //
@@ -89,7 +149,7 @@ global Set disabledTriggers;
 
 rule Threshold
     when 
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : ThresholdCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId )
         $d : Data( tenantId == $tenantId, source == $tsource, id == $did )
     then
@@ -102,7 +162,7 @@ end
 
 rule ThresholdRange
     when 
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : ThresholdRangeCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId )
         $d : Data( tenantId == $tenantId, source == $tsource, id == $did )
     then
@@ -124,7 +184,7 @@ end
 // across engine firings.
 rule ProvideCompareData1
     when
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : CompareCondition( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $d1id : dataId )
         $d : Data( tenantId == $tenantId, source == $tsource, id == $d1id )
         not  CompareData( data.tenantId == $tenantId, data.source == $tsource, data.id == $d1id )
@@ -138,7 +198,7 @@ end
 
 rule ProvideCompareData2
     when
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : CompareCondition( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $d2id : data2Id )
         $d : Data( tenantId == $tenantId, source == $tsource, id == $d2id )
         not  CompareData( data.tenantId == $tenantId, data.source == $tsource, data.id == $d2id )
@@ -168,7 +228,7 @@ end
 
 rule Compare
     when 
-        $t   : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t   : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c   : CompareCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode,
                                   $d1id : dataId, $d2id : data2Id )
         $cd1 : CompareData( data.tenantId == $tenantId, data.source == $tsource, data.id == $d1id )
@@ -183,7 +243,7 @@ end
 
 rule Availability
     when 
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : AvailabilityCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId )
         $d : Data( tenantId == $tenantId, source == $tsource, id == $did )
     then
@@ -196,7 +256,7 @@ end
 
 rule String
     when 
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : StringCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId )
         $d : Data( tenantId == $tenantId, source == $tsource, id == $did )
     then
@@ -209,7 +269,7 @@ end
 
 rule ExternalData
     when 
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : ExternalCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId )
         $d : Data( tenantId == $tenantId, source == $tsource, id == $did )
     then
@@ -222,7 +282,7 @@ end
 
 rule ExternalEvent
     when
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : ExternalCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId  )
         $d : Event( tenantId == $tenantId, dataSource == $tsource, dataId == $did )
     then
@@ -235,7 +295,7 @@ end
 
 rule Event
     when
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : EventCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId )
         $d : Event( tenantId == $tenantId, dataSource == $tsource, dataId == $did )
     then
@@ -252,7 +312,7 @@ end
 // when the next datum for dataId arrives in working memory.
 rule ProvideInitialRateData
     when
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c : RateCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId )
         $d : Data( tenantId == $tenantId, source == $tsource, id == $did )
         not  RateData( data.tenantId == $tenantId, data.source == $tsource, data.id == $did )
@@ -267,7 +327,7 @@ end
 // Given previous and current data for a given dataId, perform a RateCondition evaluation.
 rule Rate
     when
-        $t  : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t  : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c  : RateCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId )
         $d  : Data( tenantId == $tenantId, source == $tsource, id == $did, $dt : timestamp )
         $rd : RateData( data.tenantId == $tenantId, data.source == $tsource, data.id == $did, data.timestamp < $dt )
@@ -300,7 +360,7 @@ end
 // Given current data and a NelsonData for a given dataId, perform a NelsonCondition evaluation.
 rule Nelson
     when
-        $t  : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source )
+        $t  : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $tsource : source, enabled == true )
         $c  : NelsonCondition ( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, $did : dataId,
                                 $cid : conditionId )
         $d  : Data( tenantId == $tenantId, source == $tsource, id == $did )
@@ -471,23 +531,37 @@ end
 
 // Dampening update rules
 
-rule ProvideDefaultDampening
+rule ProvideDefaultSourceDampening
     when
-        $t : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode )
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $source : source, enabled == true )
         not Dampening( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode )
+        not SourceDampening( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, source == $source )
     then
         if (log != null && log.isDebugEnabled()) {
-            log.debugf("Adding default %s dampening for trigger! %s", $tmode, $t.getId());
+            log.debugf("Adding default %s SourceDampening for SourceTrigger %s", $tmode, $t);
         }
-        Dampening d = Dampening.forStrict( $tenantId, $tid, $tmode, 1 );
-        insert( d );
+        SourceDampening sd = new SourceDampening($source, Dampening.forStrict( $tenantId, $tid, $tmode, 1 ));
+        insert( sd );
+end
+
+rule ProvideSourceDampening
+    when
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $source : source, enabled == true )
+        $d : Dampening( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode )
+        not SourceDampening( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, source == $source )
+    then
+        if (log != null && log.isDebugEnabled()) {
+            log.debugf("Adding %s SourceDampening for SourceTrigger %s", $tmode, $t);
+        }
+        SourceDampening sd = new SourceDampening($source, $d);
+        insert( sd );
 end
 
 // Group all of the ConditionEvals for a trigger (1 or more) as a Set, and update the trigger's dampening
 rule DampenTrigger
     when
-        $t   : Trigger( $tenantId : tenantId, $tid : id, $tmode : mode )
-        $d   : Dampening( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, satisfied == false )
+        $t   : SourceTrigger( $tenantId : tenantId, $tid : id, $tmode : mode, $source : source, enabled == true )
+        $d   : SourceDampening( tenantId == $tenantId, triggerId == $tid, triggerMode == $tmode, source == $source, satisfied == false )
         not    Data( )
         not    Event( )
         $ces : Set( size > 0 )
@@ -516,7 +590,7 @@ end
 // timeouts when the dampening is reset.
 rule DampeningTimeoutAdd
     when
-        $d   : Dampening( type == Type.STRICT_TIMEOUT, numTrueEvals == 1, satisfied == false )
+        $d   : SourceDampening( type == Type.STRICT_TIMEOUT, numTrueEvals == 1, satisfied == false )
     then
         if (log != null && log.isDebugEnabled()) {
             log.debugf( "DampeningTimeoutAdd %s", $d );
@@ -528,7 +602,7 @@ end
 //       it is fairly lightweight. 
 rule DampeningTimeoutRemove
     when
-        $d   : Dampening( type == Type.STRICT_TIMEOUT, numTrueEvals == 0, satisfied == false )
+        $d   : SourceDampening( type == Type.STRICT_TIMEOUT, numTrueEvals == 0, satisfied == false )
     then
         if (log != null && log.isDebugEnabled()) {
             log.debugf( "DampeningTimeoutRemove %s", $d );
@@ -542,31 +616,31 @@ end
 
 // If a Trigger's FIRE mode Dampening is satisfied, then the Trigger fires and generates an Alert.  The Trigger's
 // FIRE mode Dampening fact is then reset and updated in working memory, ready to again track evals for the Trigger.
-// If the Trigger has safety mode enabled then we toggle the Trigger to SAFETY mode and it can not fire again
-// until the safety mode Dampening is satisfied and the Trigger returns to FIRE mode.
+// If the Trigger has autoresolve enabled then we toggle the Trigger to AUTORESOLVE mode and it can not fire again
+// until the AURTORESOLVE is satisfied and the Trigger returns to FIRING mode.
 rule AlertOnSatisfiedDampening
     when
-        $t  : Trigger( mode == Mode.FIRING, $tenantId : tenantId, $tid : id )
-        $d  : Dampening( triggerMode == Mode.FIRING, tenantId == $tenantId, triggerId == $tid, satisfied == true )
+        $t  : SourceTrigger( mode == Mode.FIRING, $tenantId : tenantId, $tid : id, $source : source, enabled == true )
+        $d  : SourceDampening( triggerMode == Mode.FIRING, tenantId == $tenantId, triggerId == $tid, source == $source, satisfied == true )
     then
         Event newEvent;
 
         // Only some triggers generate an alert
-        if ($t.getEventType() == EventType.ALERT) {
+        if ($t.getTrigger().getEventType() == EventType.ALERT) {
             if (log != null && log.isDebugEnabled()) {
                 log.debugf("Alert! Dampening Satisfied! %s", $d.log());
             }
 
-            newEvent = new Alert( $t.getTenantId(), $t, $d, $d.getSatisfyingEvals() );
+            newEvent = new Alert( $t.getTenantId(), $t.getTrigger(), $d.getDampening(), $source, $d.getSatisfyingEvals() );
             // Adding an Alert will implicitly add the related Event
             alerts.add((Alert)newEvent);
 
         } else {
-            if (log != null && log.isDebugEnabled() && $t.getEventType() == EventType.EVENT) {
+            if (log != null && log.isDebugEnabled() && $t.getTrigger().getEventType() == EventType.EVENT) {
                 log.debugf("Event! Dampening Satisfied! %s", $d.log());
             }
 
-            newEvent = new Event( $t.getTenantId(), $t, $d, $d.getSatisfyingEvals() );
+            newEvent = new Event( $t.getTenantId(), $t.getTrigger(), $d.getDampening(), $source, $d.getSatisfyingEvals() );
             events.add(newEvent);
         }
 
@@ -574,53 +648,48 @@ rule AlertOnSatisfiedDampening
         insert( newEvent );
 
         if (actions != null) {
-            actions.send($t, newEvent);
+            actions.send($t.getTrigger(), newEvent);
         }
 
         retract( $d );
         $d.reset();
         insert( $d );
 
-        if ($t.isAutoResolve()) {
+        if ($t.getTrigger().isAutoResolve()) {
             log.debugf("Setting Trigger to AutoResolve Mode! %s", $t);
             modify($t) {
                setMode(Mode.AUTORESOLVE)
             }
-        } else if ($t.isAutoDisable()) {
-            if (log != null && log.isDebugEnabled()) {
-                log.debugf("Setting Trigger Disabled! %s", $t);
+        } else if ($t.getTrigger().isAutoDisable()) {
+            log.debugf("Setting Trigger Disabled! %s", $t);
+            modify($t) {
+               setEnabled(false)
             }
-
-            // the autoDisable trigger handling will result in a trigger reload, so we can just retract the
-            // current definition. And given that it will be disabled, it actually will not get loaded.
-            disabledTriggers.add( $t );
-
-            retract( $t );
-
+            disabledSourceTriggers.add($t);
         } else {
-            if (log != null && log.isDebugEnabled()) {
-                log.debugf("Trigger remains in Firing mode, AutoDisable and AutoResolve not set. %s", $t);
-            }
+           log.debugf("Trigger remains in Firing mode, AutoDisable and AutoResolve not set. %s", $t);
         }
 end
 
 
 rule SetFiringModeOnSatisfiedDampening
     when
-        $t  : Trigger( mode == Mode.AUTORESOLVE, $tenantId : tenantId, $tid : id )
-        $d  : Dampening( triggerMode == Mode.AUTORESOLVE, tenantId == $tenantId, triggerId == $tid, satisfied == true )
+        $t  : SourceTrigger( mode == Mode.AUTORESOLVE, $tenantId : tenantId, $tid : id, $source : source, enabled == true )
+        $d  : SourceDampening( triggerMode == Mode.AUTORESOLVE, tenantId == $tenantId, triggerId == $tid, source == $source, satisfied == true )
     then
         if (log != null && log.isDebugEnabled()) {
             log.debugf("SetFiringModeOnSatisfiedDampening! %s", $d.log());
         }
 
-        // the autoResolved trigger handling will result in a trigger reload, so we can just retract the
-        // current definition. We set it to FIRING mode but that is mainly a cosmetic change and affects
-        // only the Trigger instance placed into autoResolvedTriggers.
-        $t.setMode(Mode.FIRING);
-        autoResolvedTriggers.put( $t, $d.getSatisfyingEvals() );
+        modify($t) {
+           setMode(Mode.FIRING)
+        }
 
-        retract( $t );
+        autoResolvedSourceTriggers.put( $t, $d.getSatisfyingEvals() );
+
+        retract( $d );
+        $d.reset();
+        insert( $d );
 end
 
 
@@ -629,6 +698,30 @@ end
 // If a trigger is retracted these rules will ensure all associated facts are removed. This only assures
 // a clean working memory if the trigger is retracted while rules are firing. If a Trigger fact is removed via
 // the API while the rule-base is not firing, then these rules don't fire and manual cleanup may be necessary.
+
+rule retractOrphanSourceTrigger
+    when
+        $t : SourceTrigger( $tenantId : tenantId, $tid : id )
+        not  Trigger( tenantId == $tenantId, id == $tid )
+    then
+        retract( $t )
+
+        if (log != null && log.isDebugEnabled()) {
+            log.debugf("Retract SourceTrigger with no Trigger. %s", $t);
+        }
+end
+
+rule retractOrphanSourceDampening
+    when
+        $d : SourceDampening( $tenantId : tenantId, $tid : triggerId, $source : source )
+        not  SourceTrigger( tenantId == $tenantId, id == $tid, source == $source )
+    then
+        retract( $d )
+
+        if (log != null && log.isDebugEnabled()) {
+            log.debugf("Retract SourceDampening with no SourceTrigger. %s", $d);
+        }
+end
 
 rule retractOrphanDampening
     when

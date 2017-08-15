@@ -211,7 +211,8 @@ public class MultipleAllJvmData extends CommonData {
 
         satisfyingEvals.add(evalSet2);
 
-        Alert openAlert = new Alert(trigger.getTenantId(), trigger, firingDampening, satisfyingEvals);
+        Alert openAlert = new Alert(trigger.getTenantId(), trigger, firingDampening, Data.SOURCE_NONE,
+                satisfyingEvals);
 
         return openAlert;
     }

@@ -100,8 +100,8 @@ public class Alert extends Event {
     /**
      * Assumes default dampening.
      */
-    public Alert(String tenantId, Trigger trigger, List<Set<ConditionEval>> evalSets) {
-        this(tenantId, trigger, null, evalSets);
+    public Alert(String tenantId, Trigger trigger, String dataSource, List<Set<ConditionEval>> evalSets) {
+        this(tenantId, trigger, null, dataSource, evalSets);
     }
 
     public Alert(Alert alert) {
@@ -120,8 +120,9 @@ public class Alert extends Event {
         this.resolvedEvalSets = alert.getResolvedEvalSets();
     }
 
-    public Alert(String tenantId, Trigger trigger, Dampening dampening, List<Set<ConditionEval>> evalSets) {
-        super(tenantId, trigger, dampening, evalSets);
+    public Alert(String tenantId, Trigger trigger, Dampening dampening, String dataSource,
+            List<Set<ConditionEval>> evalSets) {
+        super(tenantId, trigger, dampening, dataSource, evalSets);
 
         this.status = Status.OPEN;
         this.severity = trigger.getSeverity();

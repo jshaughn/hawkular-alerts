@@ -335,7 +335,7 @@ public class IspnDefinitionsServiceImpl implements DefinitionsService {
             Trigger member = new Trigger(tenantId, memberId, group.getName());
 
             copyGroupTrigger(group, member, true);
-            member.setSource(source);
+            //member.setSource(source);
             // add source tag (not sure if we really need this)
             member.getTags().put("source", source);
 

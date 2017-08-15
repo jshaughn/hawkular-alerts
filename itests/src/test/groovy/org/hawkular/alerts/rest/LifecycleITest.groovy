@@ -81,6 +81,7 @@ class LifecycleITest extends AbstractITestBase {
         assert(200 == resp.status || 404 == resp.status)
 
         testTrigger.setAutoDisable(true);
+        testTrigger.setAutoEnable(false);
         testTrigger.setAutoResolve(false);
         testTrigger.setSeverity(Severity.LOW);
 
@@ -127,13 +128,13 @@ class LifecycleITest extends AbstractITestBase {
         assertEquals(200, resp.status)
 
         // The alert processing happens async, so give it a little time before failing...
-        for ( int i=0; i < 20; ++i ) {
+        for ( int i=0; i < 8; ++i ) {
             Thread.sleep(500);
 
             // FETCH recent alerts for trigger, there should be 1
             resp = client.get(path: "", query: [startTime:start,triggerIds:"test-autodisable-trigger"] )
             if ( resp.status == 200 && resp.data != null && resp.data.size > 0) {
-                if ( i > 10 ) {
+                if ( i > 6 ) {
                     logger.info( "Perf: passing but sleep iterations high [" + i + "]" );
                 }
                 break;
@@ -145,13 +146,25 @@ class LifecycleITest extends AbstractITestBase {
 
         String alertId = resp.data[0].id;
 
-        // FETCH trigger and make sure it's disabled
-        resp = client.get(path: "triggers/test-autodisable-trigger");
+        // Send in another avail data to fire the trigger, should not fire because SourceTrigger is disabled
+        jsonData =
+            "[{\"id\":\"test-autodisable-avail\",\"timestamp\":" + 3000 + ",\"value\":\"DOWN\"}]";
+        resp = client.post(path: "data", body: jsonData);
         assertEquals(200, resp.status)
-        Trigger t = (Trigger)resp.data;
-        logger.info(t.toString());
-        assertEquals("test-autodisable-trigger", resp.data.name)
-        assertFalse(t.toString(), resp.data.enabled)
+
+        // The alert processing happens async, so wait a few seconds...
+        for ( int i=0; i < 8; ++i ) {
+            Thread.sleep(500);
+
+            // FETCH recent alerts for trigger, there should still only be 1
+            resp = client.get(path: "", query: [startTime:start,triggerIds:"test-autodisable-trigger"] )
+            if ( resp.status == 200 && resp.data != null && resp.data.size > 1) {
+                break;
+            }
+            assertEquals(200, resp.status)
+        }
+        assertEquals(200, resp.status)
+        assertEquals(1, resp.data.size())
 
         // RESOLVE manually the alert
         resp = client.put(path: "resolve", query: [alertIds:alertId,resolvedBy:"testUser",resolvedNotes:"testNotes"] )
@@ -169,11 +182,25 @@ class LifecycleITest extends AbstractITestBase {
         assertEquals("contextValue", alertContext.get("contextName"));
         assertEquals("contextValue2", alertContext.get("contextName2"));
 
-        // FETCH trigger and make sure it's still disabled, because autoEnable was set to false
-        resp = client.get(path: "triggers/test-autodisable-trigger");
+        // Send in another avail data, should not fire because SourceTrigger is still disabled, autoEnable is false
+        jsonData =
+            "[{\"id\":\"test-autodisable-avail\",\"timestamp\":" + 5000 + ",\"value\":\"DOWN\"}]";
+        resp = client.post(path: "data", body: jsonData);
         assertEquals(200, resp.status)
-        assertEquals("test-autodisable-trigger", resp.data.name)
-        assertFalse(resp.data.enabled)
+
+        // The alert processing happens async, so wait a few seconds...
+        for ( int i=0; i < 8; ++i ) {
+            Thread.sleep(500);
+
+            // FETCH recent alerts for trigger, there should still only be 1
+            resp = client.get(path: "", query: [startTime:start,triggerIds:"test-autodisable-trigger"] )
+            if ( resp.status == 200 && resp.data != null && resp.data.size > 1) {
+                break;
+            }
+            assertEquals(200, resp.status)
+        }
+        assertEquals(200, resp.status)
+        assertEquals(1, resp.data.size())
     }
 
     @Test
@@ -971,23 +998,18 @@ class LifecycleITest extends AbstractITestBase {
         waitDefinitions()
 
         // Send in DOWN avail data to fire the trigger
-        // Instead of going through the bus, in this test we'll use the alerts rest API directly to send data
-        for (int i=1000; i<=2000; i+=1000) {
-            Data avail = Data.forAvailability("", "test-autoenable-avail", i, DOWN);
-            Collection<Data> datums = new ArrayList<>();
-            datums.add(avail);
-            resp = client.post(path: "data", body: datums);
-            assertEquals(200, resp.status)
-        }
+        def jsonData = "[{\"id\":\"test-autoenable-avail\",\"timestamp\":" + 1000 + ",\"value\":\"DOWN\"}]";
+        resp = client.post(path: "data", body: jsonData);
+        assertEquals(200, resp.status)
 
         // The alert processing happens async, so give it a little time before failing...
-        for ( int i=0; i < 20; ++i ) {
+        for ( int i=0; i < 8; ++i ) {
             Thread.sleep(500);
 
             // FETCH recent alerts for trigger, there should be 1 because the trigger should have disabled after firing
             resp = client.get(path: "", query: [startTime:start,triggerIds:"test-autoenable-trigger"] )
             if ( resp.status == 200 && resp.data.size() == 1 ) {
-                if ( i > 10 ) {
+                if ( i > 6 ) {
                     logger.info( "Perf: passing but sleep iterations high [" + i + "]" );
                 }
                 break;
@@ -997,11 +1019,24 @@ class LifecycleITest extends AbstractITestBase {
         assertEquals(1, resp.data.size())
         assertEquals("OPEN", resp.data[0].status)
 
-        // FETCH trigger and make sure it's disabled
-        def resp2 = client.get(path: "triggers/test-autoenable-trigger");
-        assertEquals(200, resp2.status)
-        assertEquals("test-autoenable-trigger", resp2.data.name)
-        assertFalse(resp2.data.enabled)
+        // Send in another avail data to fire the trigger, should not fire because SourceTrigger is disabled
+        jsonData = "[{\"id\":\"test-autoenable-avail\",\"timestamp\":" + 3000 + ",\"value\":\"DOWN\"}]";
+        resp = client.post(path: "data", body: jsonData);
+        assertEquals(200, resp.status)
+
+        // The alert processing happens async, so wait a few seconds...
+        for ( int i=0; i < 8; ++i ) {
+            Thread.sleep(500);
+
+            // FETCH recent alerts for trigger, there should still only be 1
+            resp = client.get(path: "", query: [startTime:start,triggerIds:"test-autoenable-trigger"] )
+            if ( resp.status == 200 && resp.data != null && resp.data.size > 1) {
+                break;
+            }
+            assertEquals(200, resp.status)
+        }
+        assertEquals(200, resp.status)
+        assertEquals(1, resp.data.size())
 
         // RESOLVE manually the alert
         resp = client.put(path: "resolve", query: [alertIds:resp.data[0].id,resolvedBy:"testUser",
@@ -1021,11 +1056,26 @@ class LifecycleITest extends AbstractITestBase {
         resp = client.put(path: "delete", query: [triggerIds:"test-autoenable-trigger",statuses:"OPEN"] )
         assertEquals(200, resp.status)
 
-        // FETCH trigger and make sure it's now enabled
-        resp2 = client.get(path: "triggers/test-autoenable-trigger");
-        assertEquals(200, resp2.status)
-        assertEquals("test-autoenable-trigger", resp2.data.name)
-        assertTrue(resp2.data.enabled)
+        // Send in another avail data to fire the trigger, should fire because SourceTrigger is now enabled
+        jsonData = "[{\"id\":\"test-autoenable-avail\",\"timestamp\":" + 5000 + ",\"value\":\"DOWN\"}]";
+        resp = client.post(path: "data", body: jsonData);
+        assertEquals(200, resp.status)
+
+        // The alert processing happens async, so give it a little time before failing...
+        for ( int i=0; i < 8; ++i ) {
+            Thread.sleep(500);
+
+            // FETCH recent alerts for trigger, there should be 1 because the trigger should have disabled after firing
+            resp = client.get(path: "", query: [startTime:start,triggerIds:"test-autoenable-trigger"] )
+            if ( resp.status == 200 && resp.data.size() == 2 ) {
+                if ( i > 6 ) {
+                    logger.info( "Perf: passing but sleep iterations high [" + i + "]" );
+                }
+                break;
+            }
+        }
+        assertEquals(200, resp.status)
+        assertEquals(2, resp.data.size())
     }
 
     @Test
@@ -1276,6 +1326,11 @@ class LifecycleITest extends AbstractITestBase {
         assertTrue(resp.data.autoResolve);
         assertTrue(resp.data.autoResolveAlerts);
 
+        // Send in initial datum to initiate MissingState checking, then send no more to cause a violation.
+        String jsonData = "[{\"id\":\"test-hwkalerts234-avail\",\"timestamp\":" + 1000 + ",\"value\":\"UP\"}]";
+        resp = client.post(path: "data", body: jsonData);
+        assertEquals(200, resp.status)
+
         // This tests that one and only one alert is generated, so let it run for 15s.  This is plenty of time
         // to ensure we are properly skipping the MissingState check based on the trigger now being in
         // autoresolve mode (3s missingcondition interval and 2s engine runs)
@@ -1314,7 +1369,7 @@ class LifecycleITest extends AbstractITestBase {
             resp = client.get(path: "",
                 query: [startTime:start,triggerIds:"test-hwkalerts234-trigger",statuses:"RESOLVED"] )
             if ( resp.status == 200 && resp.data.size() == 1 ) {
-                logger.info(resp.data);
+                //logger.info(resp.data);
                 break;
             }
             assertEquals(200, resp.status)

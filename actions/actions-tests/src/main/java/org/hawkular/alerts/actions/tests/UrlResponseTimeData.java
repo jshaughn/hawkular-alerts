@@ -104,7 +104,8 @@ public class UrlResponseTimeData extends CommonData {
         evalSet2.add(eval2);
         satisfyingEvals.add(evalSet2);
 
-        Alert openAlert = new Alert(trigger.getTenantId(), trigger, firingDampening, satisfyingEvals);
+        Alert openAlert = new Alert(trigger.getTenantId(), trigger, firingDampening, Data.SOURCE_NONE,
+                satisfyingEvals);
 
         return openAlert;
     }

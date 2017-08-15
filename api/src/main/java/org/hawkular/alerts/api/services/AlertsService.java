@@ -67,7 +67,7 @@ public interface AlertsService {
      * Send events to the engine for alerts evaluation.
      * Persist the provided events.
      *
-     * @param events Set of unpersisted Events.
+     * @param events Set of persisted Events.
      * @throws Exception any problem
      */
     void addEvents(Collection<Event> events) throws Exception;
@@ -191,7 +191,7 @@ public interface AlertsService {
 
     /**
      * The alerts must already have been added. Set the alerts to RESOLVED status. The resolvedTime will be set to the
-     * system time.  If the call leaves the trigger with no unresolved alerts then:<br>
+     * system time.  If the call leaves the runtime trigger with no unresolved alerts then:<br>
      * - If the trigger has <code>autoEnable=true</code> it will be enabled, as needed.<br>
      * - If the trigger has <code>autoResolve=true</code> it will be set to firing mode, as needed.
      * @param tenantId Tenant where alerts are stored
@@ -201,8 +201,8 @@ public interface AlertsService {
      * @param resolvedEvalSets Optional. Typically the evalSets leading to an auto-resolved alert.
      * @throws Exception any problem
      */
-    void resolveAlerts(String tenantId, Collection<String> alertIds, String resolvedBy, String resolvedNotes,
-            List<Set<ConditionEval>> resolvedEvalSets) throws Exception;
+    void resolveAlerts(String tenantId, Collection<String> alertIds, String resolvedBy,
+            String resolvedNotes, List<Set<ConditionEval>> resolvedEvalSets) throws Exception;
 
     /**
      * Set unresolved alerts for the provided trigger to RESOLVED status. The resolvedTime will be set to the
@@ -211,13 +211,14 @@ public interface AlertsService {
      * - If the trigger has <code>autoResolve=true</code> it will be set to firing mode, as needed.
      * @param tenantId Tenant where alerts are stored
      * @param triggerId Tenant where alerts are stored
+     * @param source Limit to alerts with source, ignored if null
      * @param resolvedBy Optional. Typically the user resolving the alerts. "unknown" if not specified.
      * @param resolvedNotes Optional notes about the resolution. "none" if not specified.
      * @param resolvedEvalSets Optional. Typically the evalSets leading to an auto-resolved alert.
      * @throws Exception any problem
      */
-    void resolveAlertsForTrigger(String tenantId, String triggerId, String resolvedBy, String resolvedNotes,
-            List<Set<ConditionEval>> resolvedEvalSets) throws Exception;
+    void resolveAlertsForTrigger(String tenantId, String triggerId, String source, String resolvedBy,
+            String resolvedNotes, List<Set<ConditionEval>> resolvedEvalSets) throws Exception;
 
     /**
      * Send data into the alerting system for evaluation.

@@ -28,7 +28,6 @@ import java.util.UUID;
 import org.hawkular.alerts.api.doc.DocModel;
 import org.hawkular.alerts.api.doc.DocModelProperty;
 import org.hawkular.alerts.api.model.Severity;
-import org.hawkular.alerts.api.model.data.Data;
 import org.hawkular.alerts.api.model.event.EventType;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -166,20 +165,6 @@ public class Trigger implements Serializable {
     @JsonInclude
     private Match firingMatch;
 
-    @DocModelProperty(description = "Extended mechanism to match trigger conditions against Data with [source, dataId] " +
-            "identifiers. In this way it is possible to qualify triggers and data with a source such that a trigger " +
-            "only evaluates data having the same source.", position = 21)
-    @JsonInclude
-    String source;
-
-    /** Used internally by the rules engine. Indicates current mode of a trigger: FIRING or AUTORESOLVE. */
-    @JsonIgnore
-    private Mode mode;
-
-    /** Used internally by the rules engine. Indicates current match of a trigger: ALL or ANY. */
-    @JsonIgnore
-    private transient Match match;
-
     public Trigger() {
         /*
             Default constructor is needed for JSON libraries in JAX-RS context.
@@ -243,11 +228,7 @@ public class Trigger implements Serializable {
         this.enabled = trigger.isEnabled();
         this.firingMatch = trigger.getFiringMatch();
         this.type = trigger.getType();
-        this.source = trigger.getSource();
         this.severity = trigger.getSeverity();
-
-        this.mode = trigger.getMode() != null ? trigger.getMode() : Mode.FIRING;
-        this.match = trigger.getMode() == Mode.FIRING ? trigger.getFiringMatch() : trigger.getAutoResolveMatch();
     }
 
     public Trigger(String tenantId, String id, String name, Map<String, String> context, Map<String, String> tags) {
@@ -275,11 +256,7 @@ public class Trigger implements Serializable {
         this.enabled = false;
         this.firingMatch = Match.ALL;
         this.type = TriggerType.STANDARD;
-        this.source = Data.SOURCE_NONE;
         this.severity = Severity.MEDIUM;
-
-        this.match = Match.ALL;
-        this.mode = Mode.FIRING;
     }
 
     public static String generateId() {
@@ -503,21 +480,6 @@ public class Trigger implements Serializable {
         this.type = type;
     }
 
-    public String getSource() {
-        return source;
-    }
-
-    /**
-     * Typically set for DataDriven group triggers but can be set on any trigger to signify that the
-     * trigger only operates on data from the specified data source.
-     */
-    public void setSource(String source) {
-        if (null == source) {
-            source = Data.SOURCE_NONE;
-        }
-        this.source = source;
-    }
-
     @JsonIgnore
     public boolean isMember() {
         switch (type) {
@@ -547,31 +509,11 @@ public class Trigger implements Serializable {
         return !isGroup() && enabled;
     }
 
-    @JsonIgnore
-    public Mode getMode() {
-        return mode;
-    }
-
-    public void setMode(Mode mode) {
-        this.mode = mode;
-        setMatch(this.mode == Mode.FIRING ? getFiringMatch() : getAutoResolveMatch());
-    }
-
-    @JsonIgnore
-    public Match getMatch() {
-        return match;
-    }
-
-    public void setMatch(Match match) {
-        this.match = match;
-    }
-
     public void setFiringMatch(Match firingMatch) {
         if (firingMatch == null) {
             firingMatch = Match.ALL;
         }
         this.firingMatch = firingMatch;
-        setMatch(this.mode == Mode.FIRING ? getFiringMatch() : getAutoResolveMatch());
     }
 
     public void setAutoResolveMatch(Match autoResolveMatch) {
@@ -579,7 +521,11 @@ public class Trigger implements Serializable {
             autoResolveMatch = Match.ALL;
         }
         this.autoResolveMatch = autoResolveMatch;
-        setMatch(this.mode == Mode.FIRING ? getFiringMatch() : getAutoResolveMatch());
+    }
+
+    public boolean isValidSource(String source) {
+        // TODO: source filters?
+        return true;
     }
 
     @Override
@@ -622,7 +568,6 @@ public class Trigger implements Serializable {
                 same(memberOf, t.memberOf) &&
                 same(name, t.name) &&
                 severity == t.severity &&
-                same(source, t.source) &&
                 same(tags, t.tags) &&
                 type == t.type) {
             return true;
@@ -643,7 +588,7 @@ public class Trigger implements Serializable {
                 + ", autoEnable=" + autoEnable + ", autoResolve=" + autoResolve + ", autoResolveAlerts="
                 + autoResolveAlerts + ", autoResolveMatch=" + autoResolveMatch + ", memberOf=" + memberOf
                 + ", dataIdMap=" + dataIdMap + ", enabled=" + enabled + ", firingMatch=" + firingMatch
-                + ", mode=" + mode + ", tags=" + tags + "]";
+                + ", tags=" + tags + "]";
     }
 
 }

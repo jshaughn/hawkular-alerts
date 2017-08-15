@@ -25,11 +25,11 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
 /**
  * An <code>ExternalCondition</code> is used for condition evaluations performed outside of the Alerts engine.
- * The external engine will send <code>StringData</code> providing the data for which the external evaluation
- * <b>has already evaluated to <code>True</code></b>. The Alerts engine assumes a true evaluation for the data being
- * sent in from the external engine. In other words, every <code>ExternalConditionEvaluation</code> will have
+ * The external engine will send <code>Data</code> or an <code>Event</code> indicating an external evaluation
+ * <b>has already evaluated to <code>True</code></b>. The Alerting engine assumes a true evaluation for data received
+ * from the external engine. In other words, every <code>ExternalConditionEvaluation</code> will have
  * a true evaluation and therefore, for triggers with only a single external condition, and with default dampening,
- * an alert will be fired for each data submission.
+ * an alert will be fired for each submission.
  *
  * @author Jay Shaughnessy
  * @author Lucas Ponce
@@ -37,11 +37,11 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 @DocModel(description = "An ExternalCondition is used for condition evaluations performed outside of the " +
         "Alerting engine. + \n" +
         " + \n" +
-        "The external engine will send StringData providing the data for which the external evaluation " +
+        "The external engine will send Data or an Event indicating an the external evaluation " +
         " + \n" +
         "has already evaluated to true. + \n" +
         " + \n" +
-        "The Alerting engine assumes a true evaluation for the data being sent in from the external engine. " +
+        "The Alerting engine assumes a true evaluation for data received from the external engine. " +
         "In other words, every <<ExternalConditionEval>> will have a true evaluation and therefore, for triggers with " +
         "only a single external condition, and with default dampening, an alert will be fired for each " +
         "data submission.")

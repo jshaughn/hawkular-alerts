@@ -54,7 +54,7 @@ public class JsonTest {
     @BeforeClass
     public static void initTest() {
         Trigger trigger = new Trigger(TEST_TENANT, "trigger-test", "trigger-test");
-        Alert alert = new Alert(TEST_TENANT, trigger, null);
+        Alert alert = new Alert(TEST_TENANT, trigger, Data.SOURCE_NONE, null);
 
         AvailabilityCondition aCond = new AvailabilityCondition(TEST_TENANT, "trigger-test", "Default",
                 AvailabilityCondition.Operator.UP);

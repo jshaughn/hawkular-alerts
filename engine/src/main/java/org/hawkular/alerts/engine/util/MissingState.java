@@ -18,7 +18,6 @@ package org.hawkular.alerts.engine.util;
 
 import org.hawkular.alerts.api.model.condition.MissingCondition;
 import org.hawkular.alerts.api.model.trigger.Mode;
-import org.hawkular.alerts.api.model.trigger.Trigger;
 
 /**
  * MissingConditions detect missing data or events within a defined time interval.  Each MissingCondition
@@ -39,17 +38,17 @@ public class MissingState {
     private long time;
 
     // Need to ensure the current trigger mode matches the condition's trigger mode
-    private Trigger trigger;
+    private SourceTrigger sourceTrigger;
 
     // Given the 1:1 relationship we use the [immutable] conditionId as the unique id for this as well.
     private String conditionId;
     private MissingCondition condition;
 
-    public MissingState(Trigger trigger, MissingCondition condition) {
-        this.trigger = trigger;
-        this.tenantId = trigger.getTenantId();
-        this.triggerId = trigger.getId();
-        this.source = trigger.getSource();
+    public MissingState(SourceTrigger sourceTrigger, MissingCondition condition) {
+        this.sourceTrigger = sourceTrigger;
+        this.tenantId = sourceTrigger.getTenantId();
+        this.triggerId = sourceTrigger.getId();
+        this.source = sourceTrigger.getSource();
 
         this.condition = condition;
         this.conditionId = condition.getConditionId();
@@ -97,8 +96,8 @@ public class MissingState {
         this.time = time;
     }
 
-    public Trigger getTrigger() {
-        return trigger;
+    public SourceTrigger getSourceTrigger() {
+        return sourceTrigger;
     }
 
     public MissingCondition getCondition() {

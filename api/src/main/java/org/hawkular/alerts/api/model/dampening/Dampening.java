@@ -16,24 +16,12 @@
  */
 package org.hawkular.alerts.api.model.dampening;
 
-import static org.hawkular.alerts.api.util.Util.isEmpty;
-
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import org.hawkular.alerts.api.doc.DocModel;
 import org.hawkular.alerts.api.doc.DocModelProperty;
-import org.hawkular.alerts.api.model.condition.ConditionEval;
-import org.hawkular.alerts.api.model.trigger.Match;
 import org.hawkular.alerts.api.model.trigger.Mode;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
@@ -132,26 +120,6 @@ public class Dampening implements Serializable {
             required = false)
     @JsonInclude
     protected String dampeningId;
-
-    // The following fields are only relevant while the engine is executing.
-    @JsonIgnore
-    private transient int numTrueEvals;
-
-    @JsonIgnore
-    private transient int numEvals;
-
-    @JsonIgnore
-    private transient long trueEvalsStartTime;
-
-    // This Map<conditionSetIndex,ConditionEval> holds the most recent eval for each member of the condition set
-    @JsonIgnore
-    private transient Map<Integer, ConditionEval> currentEvals = new HashMap<>(5);
-
-    @JsonIgnore
-    private transient boolean satisfied;
-
-    @JsonIgnore
-    private transient List<Set<ConditionEval>> satisfyingEvals = new ArrayList<Set<ConditionEval>>();
 
     public Dampening() {
         this("", "", Mode.FIRING, Type.STRICT, 1, 1, 0);
@@ -267,8 +235,6 @@ public class Dampening implements Serializable {
         this.evalTotalSetting = dampening.getEvalTotalSetting();
         this.evalTimeSetting = dampening.getEvalTimeSetting();
         updateId();
-
-        reset();
     }
 
     public Dampening(String tenantId, String triggerId, Mode triggerMode, Type type, int evalTrueSetting,
@@ -282,8 +248,6 @@ public class Dampening implements Serializable {
         this.evalTimeSetting = evalTimeSetting;
         this.triggerMode = triggerMode;
         updateId();
-
-        reset();
     }
 
     public String getTriggerId() {
@@ -316,44 +280,10 @@ public class Dampening implements Serializable {
         this.evalTrueSetting = evalTrueSetting;
     }
 
-    public void setSatisfied(boolean satisfied) {
-        this.satisfied = satisfied;
-    }
-
-    public void setSatisfyingEvals(List<Set<ConditionEval>> satisfyingEvals) {
-        this.satisfyingEvals = satisfyingEvals;
-    }
-
     public void setType(Type type) {
         this.type = type;
     }
 
-    @JsonIgnore
-    public int getNumTrueEvals() {
-        return numTrueEvals;
-    }
-
-    public void setNumTrueEvals(int numTrueEvals) {
-        this.numTrueEvals = numTrueEvals;
-    }
-
-    @JsonIgnore
-    public long getTrueEvalsStartTime() {
-        return trueEvalsStartTime;
-    }
-
-    public void setTrueEvalsStartTime(long trueEvalsStartTime) {
-        this.trueEvalsStartTime = trueEvalsStartTime;
-    }
-
-    @JsonIgnore
-    public int getNumEvals() {
-        return numEvals;
-    }
-
-    public void setNumEvals(int numEvals) {
-        this.numEvals = numEvals;
-    }
 
     public Type getType() {
         return type;
@@ -371,38 +301,6 @@ public class Dampening implements Serializable {
         return evalTimeSetting;
     }
 
-    @JsonIgnore
-    public Map<Integer, ConditionEval> getCurrentEvals() {
-        return currentEvals;
-    }
-
-    @JsonIgnore
-    public boolean isSatisfied() {
-        return satisfied;
-    }
-
-    /**
-     * @return a safe, but not deep, copy of the satisfying evals List
-     */
-    @JsonIgnore
-    public List<Set<ConditionEval>> getSatisfyingEvals() {
-        return new ArrayList<Set<ConditionEval>>(satisfyingEvals);
-    }
-
-    public void addSatisfyingEvals(Set<ConditionEval> satisfyingEvals) {
-        // Make sure the display string is generated on each ConditionEval. This ensures that downstream we have the
-        // display string persisted and available via REST clients.  We generate the display string lazily so as not
-        // to slow down construction of evals, most of which are negative and never persisted.
-        for (ConditionEval ce : satisfyingEvals) {
-            ce.updateDisplayString();
-        }
-        this.satisfyingEvals.add(satisfyingEvals);
-    }
-
-    public void addSatisfyingEvals(ConditionEval... satisfyingEvals) {
-        addSatisfyingEvals(new HashSet<ConditionEval>(Arrays.asList(satisfyingEvals)));
-    }
-
     public String getTenantId() {
         return tenantId;
     }
@@ -410,138 +308,6 @@ public class Dampening implements Serializable {
     public void setTenantId(String tenantId) {
         this.tenantId = tenantId;
         updateId();
-    }
-
-    public void perform(Match match, Set<ConditionEval> conditionEvalSet) {
-        if (null == match) {
-            throw new IllegalArgumentException("Match can not be null");
-        }
-        if (isEmpty(conditionEvalSet)) {
-            throw new IllegalArgumentException("ConditionEval Set can not be null or empty");
-        }
-
-        // The currentEvals map holds the most recent eval for each condition in the condition set.
-        conditionEvalSet.stream()
-                .forEach(conditionEval -> currentEvals.put(conditionEval.getConditionSetIndex(), conditionEval));
-
-        // The conditionEvals for the same trigger will all have the same condition set size, so just use the first
-        int conditionSetSize = conditionEvalSet.iterator().next().getConditionSetSize();
-        boolean trueEval = false;
-        switch (match) {
-            case ALL:
-                // Don't perform a dampening eval until we have a conditionEval for each member of the ConditionSet.
-                if (currentEvals.size() < conditionSetSize) {
-                    return;
-                }
-                // Otherwise, all condition evals must be true for the condition set eval to be true
-                trueEval = true;
-                for (ConditionEval ce : currentEvals.values()) {
-                    if (!ce.isMatch()) {
-                        trueEval = false;
-                        break;
-                    }
-                }
-                break;
-            case ANY:
-                // we only need one true condition eval for the condition set eval to be true
-                trueEval = false;
-                for (ConditionEval ce : currentEvals.values()) {
-                    if (ce.isMatch()) {
-                        trueEval = true;
-                        break;
-                    }
-                }
-                break;
-            default:
-                throw new IllegalArgumentException("Unexpected Match type: " + match.name());
-        }
-
-        // If we had previously started our time and now have exceeded our time limit then we must start over
-        long now = System.currentTimeMillis();
-        if (type == Type.RELAXED_TIME && trueEvalsStartTime != 0L) {
-            if ((now - trueEvalsStartTime) > evalTimeSetting) {
-                reset();
-            }
-        }
-
-        numEvals += 1;
-        if (trueEval) {
-            numTrueEvals += 1;
-            addSatisfyingEvals(new HashSet<>(currentEvals.values()));
-
-            switch (type) {
-                case STRICT:
-                case RELAXED_COUNT:
-                    if (numTrueEvals == evalTrueSetting) {
-                        satisfied = true;
-                    }
-                    break;
-
-                case RELAXED_TIME:
-                    if (trueEvalsStartTime == 0L) {
-                        trueEvalsStartTime = now;
-                    }
-                    if ((numTrueEvals == evalTrueSetting) && ((now - trueEvalsStartTime) < evalTimeSetting)) {
-                        satisfied = true;
-                    }
-                    break;
-                case STRICT_TIME:
-                case STRICT_TIMEOUT:
-                    if (trueEvalsStartTime == 0L) {
-                        trueEvalsStartTime = now;
-
-                    } else if ((now - trueEvalsStartTime) >= evalTimeSetting) {
-                        satisfied = true;
-                    }
-                    break;
-            }
-        } else {
-            switch (type) {
-                case STRICT:
-                case STRICT_TIME:
-                case STRICT_TIMEOUT:
-                    reset();
-                    break;
-                case RELAXED_COUNT:
-                    int numNeeded = evalTrueSetting - numTrueEvals;
-                    int chancesLeft = evalTotalSetting - numEvals;
-                    if (numNeeded > chancesLeft) {
-                        reset();
-                    }
-                    break;
-                case RELAXED_TIME:
-                    break;
-            }
-        }
-    }
-
-    public void reset() {
-        this.numTrueEvals = 0;
-        this.numEvals = 0;
-        this.trueEvalsStartTime = 0L;
-        this.satisfied = false;
-        this.satisfyingEvals.clear();
-    }
-
-    public String log() {
-        StringBuilder sb = new StringBuilder("[" + triggerId + ", numTrueEvals=" + numTrueEvals + ", numEvals="
-                + numEvals + ", trueEvalsStartTime=" + trueEvalsStartTime + ", satisfied=" + satisfied);
-        if (satisfied) {
-            for (Set<ConditionEval> ces : satisfyingEvals) {
-                sb.append("\n\t[");
-                String space = "";
-                for (ConditionEval ce : ces) {
-                    sb.append(space);
-                    sb.append("[");
-                    sb.append(ce.getDisplayString());
-                    sb.append("]");
-                    space = " ";
-                }
-                sb.append("]");
-
-            }
-        }
-        return sb.toString();
     }
 
     public String getDampeningId() {
@@ -591,15 +357,11 @@ public class Dampening implements Serializable {
         return false;
     }
 
-    private boolean same(Object s1, Object s2) {
-        return null == s1 ? null == s2 : s1.equals(s2);
-    }
     @Override
     public String toString() {
-        return "Dampening [satisfied=" + satisfied + ", triggerId=" + triggerId + ", triggerMode=" + triggerMode
+        return "Dampening [triggerId=" + triggerId + ", triggerMode=" + triggerMode
                 + ", type=" + type + ", evalTrueSetting=" + evalTrueSetting + ", evalTotalSetting=" + evalTotalSetting
-                + ", evalTimeSetting=" + evalTimeSetting + ", numTrueEvals=" + numTrueEvals + ", numEvals=" + numEvals
-                + ", trueEvalsStartTime=" + trueEvalsStartTime + "]";
+                + ", evalTimeSetting=" + evalTimeSetting + "]";
     }
 
 }

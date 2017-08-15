@@ -20,7 +20,9 @@ import java.util.TreeSet;
 
 import org.hawkular.alerts.api.model.data.Data;
 import org.hawkular.alerts.api.model.event.Event;
+import org.hawkular.alerts.api.model.trigger.Mode;
 import org.hawkular.alerts.api.model.trigger.Trigger;
+import org.hawkular.alerts.engine.util.SourceTrigger;
 
 /**
  * Interface that allows to send data to the alerts engine and check resulting state. All methods are LockType.WRITE
@@ -37,10 +39,20 @@ public interface AlertsEngine {
     void clear();
 
     /**
-     * @param trigger the trigger for which the loaded version is requested.
-     * @return the Trigger with the current engine state, or null if the trigger is not found in the engine
+     * @param trigger root trigger of the SourceTrigger
+     * @param source source of the SourceTrigger
+     * @param enabled desired enablement or null to leave as is
+     * @param enabled desired mode or null to leave as is
+     * @return true if updated, false if no update performed
      */
-    Trigger getLoadedTrigger(Trigger trigger);
+    boolean updateSourceTrigger(Trigger trigger, String source, Boolean enabled, Mode mode);
+
+    /**
+     * @param trigger root trigger of the SourceTrigger
+     * @param source source of the SourceTrigger
+     * @return the SourceTrigger with the current engine state, or null if not found in the engine
+     */
+    SourceTrigger getSourceTrigger(Trigger trigger, String source);
 
     /**
      * Send data into the alerting system for evaluation. This method has LockType.READ.

@@ -26,6 +26,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.hawkular.alerts.api.model.condition.ExternalCondition;
+import org.hawkular.alerts.api.model.data.Data;
 import org.hawkular.alerts.api.model.trigger.FullTrigger;
 import org.hawkular.alerts.api.model.trigger.Trigger;
 
@@ -154,7 +155,7 @@ public class Expression {
         alerterId = condition.getAlerterId();
         expression = condition.getExpression();
         tenantId = trigger.getTenantId();
-        source = trigger.getSource();
+        source = Data.SOURCE_NONE;
         dataId = condition.getDataId();
         drlWindow = "";
 

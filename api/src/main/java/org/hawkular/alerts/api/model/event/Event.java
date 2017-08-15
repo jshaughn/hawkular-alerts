@@ -247,7 +247,8 @@ public class Event implements Comparable<Event>, Serializable {
      * @param alert the Non-Thin Alert, it must be fully defined.
      */
     public Event(Alert alert) {
-        this(alert.getTenantId(), alert.getTrigger(), alert.getDampening(), alert.getEvalSets());
+        this(alert.getTenantId(), alert.getTrigger(), alert.getDampening(), alert.getDataSource(),
+                alert.getEvalSets());
         this.eventType = alert.getEventType();
     }
 
@@ -272,7 +273,8 @@ public class Event implements Comparable<Event>, Serializable {
         this.tags = new HashMap<>(event.getTags());
     }
 
-    public Event(String tenantId, Trigger trigger, Dampening dampening, List<Set<ConditionEval>> evalSets) {
+    public Event(String tenantId, Trigger trigger, Dampening dampening, String dataSource,
+            List<Set<ConditionEval>> evalSets) {
         this.tenantId = tenantId;
         this.trigger = trigger;
         this.dampening = dampening;
@@ -281,7 +283,7 @@ public class Event implements Comparable<Event>, Serializable {
         this.ctime = System.currentTimeMillis();
 
         this.id = trigger.getId() + "-" + this.ctime + "-" + UUID.randomUUID();
-        this.dataSource = trigger.getSource();
+        this.dataSource = (null == dataSource) ? Data.SOURCE_NONE : dataSource;
         this.dataId = trigger.getId();
         this.context = trigger.getContext();
         if (!isEmpty(trigger.getEventCategory())) {

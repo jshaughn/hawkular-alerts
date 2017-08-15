@@ -112,7 +112,7 @@ public class JsonTest {
     @Test
     public void jsonAlertTest() throws Exception {
         Trigger trigger = new Trigger(TEST_TENANT, "trigger-test", "trigger-test");
-        Alert alert = new Alert(TEST_TENANT, trigger, null);
+        Alert alert = new Alert(TEST_TENANT, trigger, Data.SOURCE_NONE, null);
 
         String output = objectMapper.writeValueAsString(alert);
 
@@ -1236,7 +1236,7 @@ public class JsonTest {
                 "\"severity\":\"HIGH\"}";
         Trigger trigger = objectMapper.readValue(str, Trigger.class);
 
-        assertEquals(Match.ANY, trigger.getMatch());
+        assertEquals(Match.ANY, trigger.getFiringMatch());
 
         assertTrue(trigger.getName().equals("test-name"));
         assertTrue(trigger.getDescription().equals("test-description"));

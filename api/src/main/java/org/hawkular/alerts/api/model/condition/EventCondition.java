@@ -396,8 +396,10 @@ public class EventCondition extends Condition {
 
     @Override
     public int hashCode() {
+        final int prime = 31;
         int result = super.hashCode();
-        result = 31 * result + (expression != null ? expression.hashCode() : 0);
+        result = prime * result + ((dataId == null) ? 0 : dataId.hashCode());
+        result = prime * result + ((expression == null) ? 0 : expression.hashCode());
         return result;
     }
 
@@ -408,4 +410,6 @@ public class EventCondition extends Condition {
                 ",expression='" + expression + '\'' +
                 '}';
     }
+
+
 }

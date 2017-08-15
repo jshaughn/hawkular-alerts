@@ -980,7 +980,7 @@ public abstract class PersistenceTest {
         evalSet.add(eval);
         List<Set<ConditionEval>> evals = new ArrayList<>();
         evals.add(evalSet);
-        Alert alert = new Alert(TENANT, t, evals);
+        Alert alert = new Alert(TENANT, t, Data.SOURCE_NONE, evals);
         alert.addTag("test.subtest.subname", "value.subvalue");
         List<Alert> alerts = new ArrayList<>();
         alerts.add(alert);
@@ -1136,7 +1136,7 @@ public abstract class PersistenceTest {
             evalSet.add(eval);
             List<Set<ConditionEval>> evals = new ArrayList<>();
             evals.add(evalSet);
-            Alert alert = new Alert(TENANT, t, evals);
+            Alert alert = new Alert(TENANT, t, Data.SOURCE_NONE, evals);
             int iAlert = i % 3;
             switch (iAlert) {
                 case 2:
@@ -1408,7 +1408,7 @@ public abstract class PersistenceTest {
         evalSet.add(eval);
         List<Set<ConditionEval>> evals = new ArrayList<>();
         evals.add(evalSet);
-        Event event = new Event(TENANT, t, null, evals);
+        Event event = new Event(TENANT, t, null, Data.SOURCE_NONE, evals);
         List<Event> events = new ArrayList<>();
         events.add(event);
 
@@ -1547,7 +1547,7 @@ public abstract class PersistenceTest {
             evalSet.add(eval);
             List<Set<ConditionEval>> evals = new ArrayList<>();
             evals.add(evalSet);
-            Event event = new Event(TENANT, t, null, evals);
+            Event event = new Event(TENANT, t, null, Data.SOURCE_NONE, evals);
             int iEvent = i % 3;
             switch (iEvent) {
                 case 2:
@@ -2052,7 +2052,7 @@ public abstract class PersistenceTest {
     @Test
     public void test0120BasicNotesOnAlert() throws Exception {
         Trigger t = new Trigger("non-existence-trigger", "non-existence-trigger");
-        Alert testAlert = new Alert(TENANT, t, null);
+        Alert testAlert = new Alert(TENANT, t, Data.SOURCE_NONE, null);
 
         alertsService.addAlerts(Collections.singletonList(testAlert));
 
@@ -2080,7 +2080,7 @@ public abstract class PersistenceTest {
         t.addTag("TriggerTag1Name", "TriggerTag1Value");
         t.addTag("TriggerTag2Name", "TriggerTag2Value");
 
-        Alert testAlert = new Alert(TENANT, t, null);
+        Alert testAlert = new Alert(TENANT, t, Data.SOURCE_NONE, null);
 
         alertsService.addAlerts(Collections.singletonList(testAlert));
 
@@ -2208,7 +2208,7 @@ public abstract class PersistenceTest {
 
         List<Alert> alerts = new ArrayList<>();
         for (int i=0; i<10; i++) {
-            alerts.add(new Alert(TENANT, t, null));
+            alerts.add(new Alert(TENANT, t, Data.SOURCE_NONE, null));
         }
 
         alertsService.addAlerts(alerts);
@@ -2527,7 +2527,7 @@ public abstract class PersistenceTest {
         t.addTag("TriggerTag1Name", "TriggerTag1Value");
         t.addTag("TriggerTag2Name", "TriggerTag2Value");
 
-        Event testEvent = new Event(TENANT, t, null, null);
+        Event testEvent = new Event(TENANT, t, null, Data.SOURCE_NONE, null);
 
         alertsService.persistEvents(Collections.singletonList(testEvent));
 
@@ -2655,7 +2655,7 @@ public abstract class PersistenceTest {
 
         List<Event> events = new ArrayList<>();
         for (int i=0; i<10; i++) {
-            events.add(new Event(new Alert(TENANT, t, null)));
+            events.add(new Event(new Alert(TENANT, t, Data.SOURCE_NONE, null)));
         }
 
         alertsService.persistEvents(events);
@@ -3092,7 +3092,7 @@ public abstract class PersistenceTest {
         for (int i = 1; i <= numAlerts; ++i) {
             t.setSeverity(Severity.values()[i % Severity.values().length]);
             Alert.Status status = Alert.Status.values()[i % Alert.Status.values().length];
-            Alert a = new Alert(TENANT, t, null);
+            Alert a = new Alert(TENANT, t, Data.SOURCE_NONE, null);
             a.setCtime(i);
             if (status != Alert.Status.OPEN) {
                 a.addLifecycle(status, "test", i);
@@ -3138,7 +3138,7 @@ public abstract class PersistenceTest {
             Trigger t = new Trigger(tenantId, "test0300GetAlertsMultipleTenants");
             Collection<Alert> alerts = new ArrayList<>(numAlerts);
             for (int i = 0; i < numAlerts; ++i) {
-                Alert a = new Alert(tenantId, t, null);
+                Alert a = new Alert(tenantId, t, Data.SOURCE_NONE, null);
                 a.setCtime(i);
                 alerts.add(a);
             }

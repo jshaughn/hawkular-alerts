@@ -110,7 +110,8 @@ public class FilePluginTest {
         /*
             Manual alert creation for threshold
          */
-        Alert rtAlertOpen = new Alert(rtTrigger.getTenantId(), rtTrigger, getEvalList(rtFiringCondition, rtBadData));
+        Alert rtAlertOpen = new Alert(rtTrigger.getTenantId(), rtTrigger, Data.SOURCE_NONE,
+                getEvalList(rtFiringCondition, rtBadData));
         rtAlertOpen.setDampening(rtFiringDampening);
         rtAlertOpen.setStatus(Alert.Status.OPEN);
 
@@ -125,7 +126,8 @@ public class FilePluginTest {
         openThresholdAction.setProperties(props);
         openThresholdMsg = new TestActionMessage(openThresholdAction);
 
-        Alert rtAlertAck = new Alert(rtTrigger.getTenantId(), rtTrigger, getEvalList(rtFiringCondition, rtBadData));
+        Alert rtAlertAck = new Alert(rtTrigger.getTenantId(), rtTrigger, Data.SOURCE_NONE,
+                getEvalList(rtFiringCondition, rtBadData));
         rtAlertAck.setDampening(rtFiringDampening);
         rtAlertAck.addLifecycle(Alert.Status.ACKNOWLEDGED, "Test ACK user", System.currentTimeMillis() + 10000);
         rtAlertAck.addNote("Test ACK user", "Test ACK notes");
@@ -140,7 +142,7 @@ public class FilePluginTest {
          */
         Data rtGoodData = Data.forNumeric(tenantId, rtDataId, System.currentTimeMillis() + 20000, 998d);
 
-        Alert rtAlertResolved = new Alert(rtTrigger.getTenantId(), rtTrigger,
+        Alert rtAlertResolved = new Alert(rtTrigger.getTenantId(), rtTrigger, Data.SOURCE_NONE,
                 getEvalList(rtFiringCondition, rtBadData));
         rtAlertResolved.setDampening(rtFiringDampening);
         rtAlertResolved.addLifecycle(Alert.Status.RESOLVED, "Test RESOLVED user", System.currentTimeMillis() + 20000);
@@ -172,7 +174,8 @@ public class FilePluginTest {
         /*
             Manual alert creation for availability
          */
-        Alert avAlertOpen = new Alert(avTrigger.getTenantId(), avTrigger, getEvalList(avFiringCondition, avBadData));
+        Alert avAlertOpen = new Alert(avTrigger.getTenantId(), avTrigger, Data.SOURCE_NONE,
+                getEvalList(avFiringCondition, avBadData));
         avAlertOpen.setDampening(avFiringDampening);
         avAlertOpen.setStatus(Alert.Status.OPEN);
 
@@ -187,7 +190,8 @@ public class FilePluginTest {
         openAvailabilityAction.setProperties(props);
         openAvailMsg = new TestActionMessage(openAvailabilityAction);
 
-        Alert avAlertAck = new Alert(avTrigger.getTenantId(), avTrigger, getEvalList(avFiringCondition, avBadData));
+        Alert avAlertAck = new Alert(avTrigger.getTenantId(), avTrigger, Data.SOURCE_NONE,
+                getEvalList(avFiringCondition, avBadData));
         avAlertAck.setDampening(avFiringDampening);
         avAlertAck.addLifecycle(Alert.Status.ACKNOWLEDGED, "Test ACK user", System.currentTimeMillis() + 10000);
         avAlertAck.addNote("Test ACK user", "Test ACK notes");
@@ -203,7 +207,7 @@ public class FilePluginTest {
         Data avGoodData = Data.forAvailability(tenantId, avDataId, System.currentTimeMillis() + 20000,
                 AvailabilityType.UP);
 
-        Alert avAlertResolved = new Alert(avTrigger.getTenantId(), avTrigger,
+        Alert avAlertResolved = new Alert(avTrigger.getTenantId(), avTrigger, Data.SOURCE_NONE,
                 getEvalList(avFiringCondition, avBadData));
         avAlertResolved.setDampening(avFiringDampening);
         avAlertResolved.addLifecycle(Alert.Status.RESOLVED, "Test RESOLVED user", System.currentTimeMillis() + 20000);
@@ -246,7 +250,7 @@ public class FilePluginTest {
         List<Data> mixBadData = new ArrayList<>();
         mixBadData.add(rtBadData);
         mixBadData.add(avBadData);
-        Alert mixAlertOpen = new Alert(mixTrigger.getTenantId(), mixTrigger,
+        Alert mixAlertOpen = new Alert(mixTrigger.getTenantId(), avTrigger, Data.SOURCE_NONE,
                getEvalList(mixConditions, mixBadData));
         mixAlertOpen.setDampening(mixFiringDampening);
         mixAlertOpen.setStatus(Alert.Status.OPEN);
@@ -262,7 +266,7 @@ public class FilePluginTest {
         openTwoCondAction.setProperties(props);
         openTwoCondMsg = new TestActionMessage(openTwoCondAction);
 
-        Alert mixAlertAck = new Alert(mixTrigger.getTenantId(), mixTrigger,
+        Alert mixAlertAck = new Alert(mixTrigger.getTenantId(), avTrigger, Data.SOURCE_NONE,
                 getEvalList(mixConditions, mixBadData));
         mixAlertAck.setDampening(mixFiringDampening);
         mixAlertAck.addLifecycle(Alert.Status.ACKNOWLEDGED, "Test ACK user", System.currentTimeMillis() + 10000);
@@ -287,7 +291,7 @@ public class FilePluginTest {
         mixGoodData.add(rtGoodData);
         mixGoodData.add(avGoodData);
 
-        Alert mixAlertResolved = new Alert(mixTrigger.getTenantId(), mixTrigger,
+        Alert mixAlertResolved = new Alert(mixTrigger.getTenantId(), avTrigger, Data.SOURCE_NONE,
                 getEvalList(mixConditions, mixBadData));
         mixAlertResolved.setDampening(mixFiringDampening);
         mixAlertResolved.addLifecycle(Alert.Status.RESOLVED, "Test RESOLVED user", System.currentTimeMillis() + 20000);

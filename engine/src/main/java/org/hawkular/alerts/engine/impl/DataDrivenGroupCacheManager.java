@@ -123,7 +123,7 @@ public class DataDrivenGroupCacheManager {
                     Set<String> sources = new HashSet<>();
                     for (Trigger memberTrigger : definitions.getMemberTriggers(tenantId, groupTrigger.getId(),
                             false)) {
-                        sources.add(memberTrigger.getSource());
+                        // TODO: THIS CLASS GOES AWAY< I THINK sources.add(memberTrigger.getSource());
                     }
                     for (Condition c : definitions.getTriggerConditions(tenantId, groupTrigger.getId(), null)) {
                         CacheKey key = new CacheKey(tenantId, c.getDataId());

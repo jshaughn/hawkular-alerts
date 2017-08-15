@@ -27,13 +27,13 @@ import org.hawkular.alerts.api.model.condition.CompareCondition;
 import org.hawkular.alerts.api.model.condition.StringCondition;
 import org.hawkular.alerts.api.model.condition.ThresholdCondition;
 import org.hawkular.alerts.api.model.condition.ThresholdRangeCondition;
-import org.hawkular.alerts.api.model.dampening.Dampening;
 import org.hawkular.alerts.api.model.data.AvailabilityType;
 import org.hawkular.alerts.api.model.data.Data;
 import org.hawkular.alerts.api.model.event.Alert;
 import org.hawkular.alerts.api.model.trigger.Trigger;
 import org.hawkular.alerts.engine.impl.DroolsRulesEngineImpl;
 import org.hawkular.alerts.engine.service.RulesEngine;
+import org.hawkular.alerts.engine.util.SourceDampening;
 import org.hawkular.commons.log.MsgLogger;
 import org.hawkular.commons.log.MsgLogging;
 import org.junit.After;
@@ -58,7 +58,7 @@ public class PerfRulesEngineTest {
 
     RulesEngine rulesEngine = new DroolsRulesEngineImpl();
     List<Alert> alerts = new ArrayList<>();
-    Set<Dampening> pendingTimeouts = new HashSet<>();
+    Set<SourceDampening> pendingTimeouts = new HashSet<>();
     TreeSet<Data> datums = new TreeSet<Data>();
 
     @Before

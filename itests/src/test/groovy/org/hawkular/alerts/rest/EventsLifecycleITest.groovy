@@ -386,8 +386,20 @@ class EventsLifecycleITest extends AbstractITestBase {
         resp = client.put(path: "triggers/enabled", query: [triggerIds:"test-events-t04",enabled:true])
         assertEquals(200, resp.status)
 
-        // Wait for 7 seconds to fire the missing events
-        Thread.sleep(7000);
+        // Send in initial event to initiate MissingState checking, then send no more to cause a violation.
+        String jsonEventTest04Id = UUID.randomUUID().toString();
+        String jsonEventTest04 = "[{" +
+                "\"id\":\"" + jsonEventTest04Id + "\"," +
+                "\"ctime\":" + System.currentTimeMillis() + "," +
+                "\"category\":\"Test04\"," +
+                "\"dataId\":\"event-data-id-t04\"," +
+                "\"text\":\"Test04 text\"" +
+                "}]";
+        resp = client.post(path: "events/data", body: jsonEventTest04);
+        assertEquals(200, resp.status)
+
+        // Wait for 8 seconds to fire the missing events
+        Thread.sleep(8000);
 
         resp = client.get(path: "events", query: [startTime:start,triggerIds:"test-events-t04"] )
         assertEquals(200, resp.status)
@@ -428,8 +440,7 @@ class EventsLifecycleITest extends AbstractITestBase {
         resp = client.put(path: "triggers/enabled", query: [triggerIds:"test-events-t05",enabled:true])
         assertEquals(200, resp.status)
 
-        Thread.sleep(2000);
-
+        // Send in initial event to initiate MissingState checking
         String jsonEventTest05Id = UUID.randomUUID().toString();
         String jsonEventTest05 = "[{" +
                 "\"id\":\"" + jsonEventTest05Id + "\"," +
@@ -438,10 +449,10 @@ class EventsLifecycleITest extends AbstractITestBase {
                 "\"dataId\":\"event-data-id-t05\"," +
                 "\"text\":\"Test05 text\"" +
                 "}]";
-
         resp = client.post(path: "events/data", body: jsonEventTest05);
         assertEquals(200, resp.status)
 
+        // send another after 2s, should not cause a violation
         Thread.sleep(2000);
 
         jsonEventTest05Id = UUID.randomUUID().toString();
@@ -452,10 +463,10 @@ class EventsLifecycleITest extends AbstractITestBase {
                 "\"dataId\":\"event-data-id-t05\"," +
                 "\"text\":\"Test05 text\"" +
                 "}]";
-
         resp = client.post(path: "events/data", body: jsonEventTest05);
         assertEquals(200, resp.status)
 
+        // send another after 2s, should not cause a violation
         Thread.sleep(2000);
 
         jsonEventTest05Id = UUID.randomUUID().toString();
@@ -466,7 +477,20 @@ class EventsLifecycleITest extends AbstractITestBase {
                 "\"dataId\":\"event-data-id-t05\"," +
                 "\"text\":\"Test05 text\"" +
                 "}]";
+        resp = client.post(path: "events/data", body: jsonEventTest05);
+        assertEquals(200, resp.status)
 
+        // send another after 2s, should not cause a violation
+        Thread.sleep(2000);
+
+        jsonEventTest05Id = UUID.randomUUID().toString();
+        jsonEventTest05 = "[{" +
+                "\"id\":\"" + jsonEventTest05Id + "\"," +
+                "\"ctime\":" + System.currentTimeMillis() + "," +
+                "\"category\":\"Test05\"," +
+                "\"dataId\":\"event-data-id-t05\"," +
+                "\"text\":\"Test05 text\"" +
+                "}]";
         resp = client.post(path: "events/data", body: jsonEventTest05);
         assertEquals(200, resp.status)
 

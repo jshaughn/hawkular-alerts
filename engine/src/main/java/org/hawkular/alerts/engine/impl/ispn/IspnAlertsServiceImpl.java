@@ -16,6 +16,7 @@
  */
 package org.hawkular.alerts.engine.impl.ispn;
 
+import static org.hawkular.alerts.api.model.trigger.Mode.FIRING;
 import static org.hawkular.alerts.api.util.Util.isEmpty;
 import static org.hawkular.alerts.engine.impl.ispn.IspnPk.pk;
 import static org.hawkular.alerts.engine.impl.ispn.IspnPk.pkFromEventId;
@@ -30,6 +31,8 @@ import static org.hawkular.alerts.engine.util.Utils.extractTriggerIds;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +51,6 @@ import org.hawkular.alerts.api.model.paging.EventComparator;
 import org.hawkular.alerts.api.model.paging.Order;
 import org.hawkular.alerts.api.model.paging.Page;
 import org.hawkular.alerts.api.model.paging.Pager;
-import org.hawkular.alerts.api.model.trigger.Mode;
 import org.hawkular.alerts.api.model.trigger.Trigger;
 import org.hawkular.alerts.api.services.ActionsService;
 import org.hawkular.alerts.api.services.AlertsCriteria;
@@ -764,16 +766,25 @@ public class IspnAlertsServiceImpl implements AlertsService {
             sendAction(alert);
         }
 
-        // gather the triggerIds of the triggers we need to check for resolve options
-        Set<String> triggerIds = alertsToResolve.stream().map(alert -> alert.getTriggerId()).collect(Collectors.toSet());
-
-        // handle resolve options
-        triggerIds.stream().forEach(tid -> handleResolveOptions(tenantId, tid, true));
-
+        // There may be multiple alerts for the same triggerId-source combo, check each combo only once
+        Map<String, Set<String>> checkResolveOptions = new HashMap<>();
+        alertsToResolve.stream().forEach(a -> {
+            Set<String> sources = checkResolveOptions.get(a.getTriggerId());
+            sources = (null == sources) ? new HashSet<>() : sources;
+            sources.add(a.getDataSource());
+            checkResolveOptions.put(a.getTriggerId(), sources);
+        });
+        for (String triggerId : checkResolveOptions.keySet()) {
+            for (String dataSource : checkResolveOptions.get(triggerId)) {
+                handleResolveOptions(tenantId, triggerId, dataSource, true);
+            }
+        }
     }
 
     @Override
-    public void resolveAlertsForTrigger(String tenantId, String triggerId, String resolvedBy, String resolvedNotes, List<Set<ConditionEval>> resolvedEvalSets) throws Exception {
+    public void resolveAlertsForTrigger(String tenantId, String triggerId, String source, String resolvedBy,
+            String resolvedNotes, List<Set<ConditionEval>> resolvedEvalSets) throws Exception {
+
         if (isEmpty(tenantId)) {
             throw new IllegalArgumentException("TenantId must be not null");
         }
@@ -792,17 +803,65 @@ public class IspnAlertsServiceImpl implements AlertsService {
         criteria.setTriggerId(triggerId);
         criteria.setStatusSet(EnumSet.complementOf(EnumSet.of(Status.RESOLVED)));
         List<Alert> alertsToResolve = getAlerts(tenantId, criteria, null);
+        List<Alert> sourceAlertsToResolve = alertsToResolve.stream()
+                .filter(a -> null == source || source.equals(a.getDataSource()))
+                .collect(Collectors.toList());
 
-        for (Alert alert : alertsToResolve) {
-            alert.addNote(resolvedBy, resolvedNotes);
-            alert.setResolvedEvalSets(resolvedEvalSets);
-            alert.addLifecycle(Status.RESOLVED, resolvedBy, System.currentTimeMillis());
-            backend.put(pk(alert), new IspnEvent(alert));
-            sendAction(alert);
+        for (Alert a : sourceAlertsToResolve) {
+            a.addNote(resolvedBy, resolvedNotes);
+            a.setResolvedEvalSets(resolvedEvalSets);
+            a.addLifecycle(Status.RESOLVED, resolvedBy, System.currentTimeMillis());
+            backend.put(pk(a), new IspnEvent(a));
+            sendAction(a);
         }
 
-        handleResolveOptions(tenantId, triggerId, false);
+        handleResolveOptions(tenantId, triggerId, source, false);
+    }
 
+    private void handleResolveOptions(String tenantId, String triggerId, String source, boolean checkIfAllResolved) {
+
+        try {
+            Trigger trigger = definitionsService.getTrigger(tenantId, triggerId);
+            if (null == trigger) {
+                return;
+            }
+
+            // If the root trigger is not enabled it's not loaded in the engine, so return
+            if (!trigger.isEnabled()) {
+                return;
+            }
+
+            boolean setEnabled = trigger.isAutoEnable();
+            boolean setFiring = trigger.isAutoResolve();
+
+            if (!(setEnabled || setFiring)) {
+                return;
+            }
+
+            boolean allResolved = true;
+            if (checkIfAllResolved) {
+                AlertsCriteria ac = new AlertsCriteria();
+                ac.setTriggerId(triggerId);
+                ac.setStatusSet(EnumSet.complementOf(EnumSet.of(Status.RESOLVED)));
+                // TODO add source criteria for alert/event search
+                Page<Alert> unresolvedAlerts = getAlerts(tenantId, ac, new Pager(0, 1, Order.unspecified()));
+                List<Alert> sourceAlerts = unresolvedAlerts.stream()
+                        .filter(a -> source == null || source.equals(a.getDataSource()))
+                        .collect(Collectors.toList());
+                allResolved = sourceAlerts.isEmpty();
+            }
+
+            if (!allResolved) {
+                log.debugf("Ignoring resolveOptions, not all Alerts for Trigger/Source %s/%s are resolved",
+                        trigger.toString(), source);
+                return;
+            }
+
+            alertsEngine.updateSourceTrigger(trigger, source, setEnabled ? true : null, setFiring ? FIRING : null);
+
+        } catch (Exception e) {
+            log.errorDatabaseException(e.getMessage());
+        }
     }
 
     @Override
@@ -879,7 +938,7 @@ public class IspnAlertsServiceImpl implements AlertsService {
         } else {
             AlertComparator.Field defaultField = AlertComparator.Field.ALERT_ID;
             Order.Direction defaultDirection = Order.Direction.ASCENDING;
-            AlertComparator comparator = new AlertComparator(defaultField.getText(), defaultDirection.ASCENDING);
+            AlertComparator comparator = new AlertComparator(defaultField.getText(), defaultDirection);
             pager = Pager.builder().withPageSize(alerts.size()).orderBy(defaultField.getText(), defaultDirection)
                     .build();
             Collections.sort(alerts, comparator);
@@ -891,69 +950,6 @@ public class IspnAlertsServiceImpl implements AlertsService {
         if (actionsService != null && a != null && a.getTrigger() != null) {
             actionsService.send(a.getTrigger(), a);
         }
-    }
-
-    private void handleResolveOptions(String tenantId, String triggerId, boolean checkIfAllResolved) {
-
-        if (definitionsService == null || alertsEngine == null) {
-            log.debug("definitionsService or alertsEngine are not defined. Only valid for testing.");
-            return;
-        }
-
-        try {
-            Trigger trigger = definitionsService.getTrigger(tenantId, triggerId);
-            if (null == trigger) {
-                return;
-            }
-
-            boolean setEnabled = trigger.isAutoEnable() && !trigger.isEnabled();
-            boolean setFiring = trigger.isAutoResolve();
-
-            // Only reload the trigger if it is not already in firing mode, otherwise we could lose partial matching.
-            // This is a rare case because a trigger with autoResolve=true will not be in firing mode with an
-            // unresolved trigger. But it is possible, either by mistake, or timing,  for a client to try and
-            // resolve an already-resolved alert.
-            if (setFiring) {
-                Trigger loadedTrigger = alertsEngine.getLoadedTrigger(trigger);
-                if (null != loadedTrigger && Mode.FIRING == loadedTrigger.getMode()) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Ignoring setFiring, loaded Trigger already in firing mode " +
-                                loadedTrigger.toString());
-                    }
-                    setFiring = false;
-                }
-            }
-
-            if (!(setEnabled || setFiring)) {
-                return;
-            }
-
-            boolean allResolved = true;
-            if (checkIfAllResolved) {
-                AlertsCriteria ac = new AlertsCriteria();
-                ac.setTriggerId(triggerId);
-                ac.setStatusSet(EnumSet.complementOf(EnumSet.of(Status.RESOLVED)));
-                Page<Alert> unresolvedAlerts = getAlerts(tenantId, ac, new Pager(0, 1, Order.unspecified()));
-                allResolved = unresolvedAlerts.isEmpty();
-            }
-
-            if (!allResolved) {
-                log.debugf("Ignoring resolveOptions, not all Alerts for Trigger %s are resolved", trigger.toString());
-                return;
-            }
-
-            // Either update the trigger, which implicitly reloads the trigger (and as such resets to firing mode)
-            // or perform an explicit reload to reset to firing mode.
-            if (setEnabled) {
-                trigger.setEnabled(true);
-                definitionsService.updateTrigger(tenantId, trigger);
-            } else {
-                alertsEngine.reloadTrigger(tenantId, triggerId);
-            }
-        } catch (Exception e) {
-            log.errorDatabaseException(e.getMessage());
-        }
-
     }
 
     private Page<Event> prepareEventsPage(List<Event> events, Pager pager) {

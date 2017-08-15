@@ -155,7 +155,7 @@ public abstract class IspnBaseServiceImplTest {
                     evalSet.add(eval);
                     List<Set<ConditionEval>> evals = new ArrayList<>();
                     evals.add(evalSet);
-                    Alert alertX = new Alert(tenantId, triggerX, evals);
+                    Alert alertX = new Alert(tenantId, triggerX, Data.SOURCE_NONE, evals);
                     // Hack to set up the right ctime for tests
                     alertX.setCtime(alert + 1);
                     alertX.getCurrentLifecycle().setStime(alert + 1);

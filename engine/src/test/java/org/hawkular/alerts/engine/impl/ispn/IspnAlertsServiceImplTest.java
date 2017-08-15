@@ -20,7 +20,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.hawkular.alerts.api.model.Severity;
+import org.hawkular.alerts.api.model.data.Data;
 import org.hawkular.alerts.api.model.event.Alert;
 import org.hawkular.alerts.api.model.event.Event;
 import org.hawkular.alerts.api.services.AlertsCriteria;
@@ -575,7 +575,8 @@ public class IspnAlertsServiceImplTest extends IspnBaseServiceImplTest {
         int numAlerts = 5;
         createTestAlerts(numTenants, numTriggers, numAlerts);
 
-        alerts.resolveAlertsForTrigger("tenant0", "trigger0", "test", "RESOLVED from resolveAlert() test", null);
+        alerts.resolveAlertsForTrigger("tenant0", "trigger0", Data.SOURCE_NONE, "test",
+                "RESOLVED from resolveAlert() test", null);
 
         AlertsCriteria criteria = new AlertsCriteria();
         criteria.setStatus(Alert.Status.RESOLVED);
